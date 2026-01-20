@@ -67,6 +67,13 @@ EMPRESAS_FATURAMENTO = ["Integralis", "AMHP", "Outros"]
 
 SISTEMAS = ["Outros", "Orizon", "Benner", "Maida", "Facil", "Visual TISS", "Próprio"]
 
+
+# Opções oficiais (validação estrita)
+OPCOES_XML = ["Sim", "Não"]
+OPCOES_NF = ["Sim", "Não"]
+OPCOES_FLUXO_NF = ["Envia XML sem nota", "Envia NF junto com o lote"]
+
+
 # ------------------------------------------------------------
 # 4. CSS GLOBAL + HEADER FIXO
 # ------------------------------------------------------------
@@ -151,6 +158,11 @@ st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
 # ============================================================
 # 5. FUNÇÕES UTILITÁRIAS
 # ============================================================
+
+def normalize(value):
+    if not value:
+        return ""
+    return sanitize_text(value).strip().lower()
 
 
 def generate_id(dados_atuais):
@@ -596,19 +608,29 @@ def page_cadastro():
             nome = st.text_input("Nome do Convênio", value=safe_get(dados_conv, "nome"))
             codigo = st.text_input("Código", value=safe_get(dados_conv, "codigo"))
 
+            
+            valor_empresa = safe_get(dados_conv, "empresa")
+            if valor_empresa not in EMPRESAS_FATURAMENTO:
+                valor_empresa = EMPRESAS_FATURAMENTO[0]
+            
             empresa = st.selectbox(
                 "Empresa Faturamento",
                 EMPRESAS_FATURAMENTO,
-                index=EMPRESAS_FATURAMENTO.index(safe_get(dados_conv, "empresa"))
-                if dados_conv and safe_get(dados_conv, "empresa") in EMPRESAS_FATURAMENTO else 0
+                index=EMPRESAS_FATURAMENTO.index(valor_empresa)
             )
 
+
+            
+            valor_sistema = safe_get(dados_conv, "sistema_utilizado")
+            if valor_sistema not in SISTEMAS:
+                valor_sistema = SISTEMAS[0]
+            
             sistema = st.selectbox(
                 "Sistema",
                 SISTEMAS,
-                index=SISTEMAS.index(safe_get(dados_conv, "sistema_utilizado"))
-                if dados_conv and safe_get(dados_conv, "sistema_utilizado") in SISTEMAS else 0
+                index=SISTEMAS.index(valor_sistema)
             )
+
 
         # COLUNA 2
         with col2:
@@ -622,34 +644,56 @@ def page_cadastro():
             envio = st.text_input("Prazo Envio", value=safe_get(dados_conv, "envio"))
             validade = st.text_input("Validade da Guia", value=safe_get(dados_conv, "validade"))
 
+            
+            valor_xml = safe_get(dados_conv, "xml")
+            if valor_xml not in OPCOES_XML:
+                valor_xml = "Sim"
+            
             xml = st.radio(
                 "Envia XML?",
-                ["Sim", "Não"],
-                index=0 if safe_get(dados_conv, "xml") != "Não" else 1
+                OPCOES_XML,
+                index=OPCOES_XML.index(valor_xml)
             )
 
+
+            
+            valor_nf = safe_get(dados_conv, "nf")
+            if valor_nf not in OPCOES_NF:
+                valor_nf = "Sim"
+            
             nf = st.radio(
                 "Exige Nota Fiscal?",
-                ["Sim", "Não"],
-                index=0 if safe_get(dados_conv, "nf") != "Não" else 1
+                OPCOES_NF,
+                index=OPCOES_NF.index(valor_nf)
             )
+
 
         # XML/NF
         colA, colB = st.columns(2)
 
         with colA:
+            
+            valor_versao = safe_get(dados_conv, "versao_xml")
+            if valor_versao not in VERSOES_TISS:
+                valor_versao = VERSOES_TISS[0]
+            
             versao_xml = st.selectbox(
                 "Versão XML (TISS)",
                 VERSOES_TISS,
-                index=VERSOES_TISS.index(safe_get(dados_conv, "versao_xml"))
-                if dados_conv and safe_get(dados_conv, "versao_xml") in VERSOES_TISS else 0
+                index=VERSOES_TISS.index(valor_versao)
             )
 
+
         with colB:
+            
+            valor_fluxo = safe_get(dados_conv, "fluxo_nf")
+            if valor_fluxo not in OPCOES_FLUXO_NF:
+                valor_fluxo = OPCOES_FLUXO_NF[0]
+            
             fluxo_nf = st.selectbox(
                 "Fluxo da Nota",
-                ["Envia XML sem nota", "Envia NF junto com o lote"],
-                index=0 if safe_get(dados_conv, "fluxo_nf") == "Envia XML sem nota" else 1
+                OPCOES_FLUXO_NF,
+                index=OPCOES_FLUXO_NF.index(valor_fluxo)
             )
 
         config_gerador = st.text_area(
