@@ -648,21 +648,23 @@ def page_cadastro(dados_atuais):
             }
 
             
-            if conv_id is None:
-                novo_registro["id"] = generate_id(dados_atuais)
-                dados_atuais.append(novo_registro)
-            else:
-                novo_registro["id"] = int(conv_id)
-                for i, c in enumerate(dados_atuais):
-                    if str(c.get("id")) == str(conv_id):
-                        dados_atuais[i] = novo_registro
-                        break
-            
-            # --- SALVAR (para novo OU editado) ---
-            if db.save(dados_atuais):
-                st.success(f"✔ Convênio {novo_registro['id']} salvo com sucesso!")
-                time.sleep(0.4)
-                st.rerun()
+           
+        if conv_id is None:
+            novo_registro["id"] = generate_id(dados_atuais)
+            dados_atuais.append(novo_registro)
+        else:
+            novo_registro["id"] = int(conv_id)
+            for i, c in enumerate(dados_atuais):
+                if str(c.get("id")) == str(conv_id):
+                    dados_atuais[i] = novo_registro
+                    break
+        
+        # --- SALVAR AQUI (para novo OU editar) ---
+        if db.save(dados_atuais):
+            st.success(f"✔ Convênio {novo_registro['id']} salvo com sucesso!")
+            time.sleep(0.4)
+            st.rerun()
+
 
 
 
