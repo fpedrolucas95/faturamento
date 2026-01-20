@@ -495,7 +495,7 @@ if menu == "Cadastrar / Editar":
                        if dados_conv and dados_conv.get("empresa") in ["Integralis", "AMHP", "Outros"]
                        else 0)
             )
-            sistema = st.selectbox("Sistema", ["Orizon", "Benner", "Maida", "Facil", "Visual TISS", "Próprio"])
+            sistema = st.selectbox("Sistema", ["Outros", "Orizon", "Benner", "Maida", "Facil", "Visual TISS", "Próprio"])
 
         # Coluna 2
         with col2:
