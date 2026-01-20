@@ -667,19 +667,20 @@ def page_cadastro(dados_atuais):
                     time.sleep(0.4)
                     st.rerun()
 
-
-
-
-
-                # Botão de PDF (fora do form)
-                if dados_conv:
-                pdf_content = gerar_pdf(dados_conv)
-                st.download_button(
-                    "📥 Baixar PDF do Convênio",
-                    pdf_content,
-                    file_name=f"Manual_{safe_get(dados_conv, 'nome')}.pdf",
-                    mime="application/pdf"
-                )
+    # --------------------------------------------------------
+    # BOTÃO DE PDF (Fora do formulário para permitir download)
+    # --------------------------------------------------------
+    if dados_conv:
+        # Gerar o conteúdo em bytes uma única vez
+        pdf_bytes = gerar_pdf(dados_conv)
+        
+        st.download_button(
+            label="📥 Baixar PDF do Convênio",
+            data=pdf_bytes,
+            file_name=f"Manual_{safe_get(dados_conv, 'nome')}.pdf",
+            mime="application/pdf"
+        )
+              
 
 # ============================================================
 # 10. PÁGINA — CONSULTA DE CONVÊNIOS
