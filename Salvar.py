@@ -141,9 +141,23 @@ st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
 # 5. FUNÇÕES UTILITÁRIAS
 # ============================================================
 
-def generate_id():
-    """Gera ID único padrão UUID4 para cada convênio."""
-    return str(uuid.uuid4())
+def generate_id(dados_atuais):
+    """
+    Gera um ID decimal sequencial baseado no maior ID existente.
+    Se a lista estiver vazia, começa em 1.
+    """
+    if not dados_atuais:
+        return 1
+    
+    ids = []
+    for item in dados_atuais:
+        try:
+            # Tenta converter o ID existente para int (caso ainda existam UUIDs antigos)
+            ids.append(int(item.get("id", 0)))
+        except ValueError:
+            continue
+            
+    return max(ids) + 1 if ids else 1
 
 
 def sanitize_text(text: str) -> str:
@@ -219,50 +233,32 @@ def wrap_text(text, pdf, max_width):
 # ============================================================
 
 def github_get_file():
-    """
-    Lê o arquivo JSON do GitHub SEM CACHE e garante que todos os convênios
-    possuam um ID único permanente, adicionando quando necessário.
-    """
-    url = (
-        f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/"
-        f"{FILE_PATH}?ref={BRANCH}&t={int(time.time())}"
-    )
-
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-
+    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}?ref={BRANCH}&t={int(time.time())}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+    
     try:
         response = requests.get(url, headers=headers)
-
         if response.status_code == 200:
             content = response.json()
-
             decoded = base64.b64decode(content["content"]).decode("utf-8")
             data = json.loads(decoded)
-
-            # 🔥 Verifica se todos têm ID — compatível com versões antigas
+            
+            # Migração para ID Decimal (Garante que strings virem números)
             modified = False
-            for item in data:
-                if "id" not in item:
-                    item["id"] = generate_id()
+            for i, item in enumerate(data):
+                if "id" not in item or isinstance(item["id"], str):
+                    item["id"] = i + 1
                     modified = True
-
-            # Se IDs foram criados agora, salva imediatamente
+            
             if modified:
                 github_save_file(data, content["sha"])
-
             return data, content["sha"]
-
+        
         elif response.status_code == 404:
-            # Banco ainda não existe
             return [], None
-
         else:
-            st.error(f"⚠️ Erro ao carregar dados GitHub (HTTP {response.status_code})")
+            st.error(f"⚠️ Erro GitHub: {response.status_code}")
             return [], None
-
     except Exception as e:
         st.error(f"❌ Erro ao consultar GitHub: {e}")
         return [], None
@@ -618,24 +614,39 @@ def ui_block_info(title: str, content: str):
 # 9. PÁGINA — CADASTRO / EDIÇÃO DE CONVÊNIOS
 # ============================================================
 
+O problema de os dados não aparecerem quando você seleciona um convênio existente na tela de cadastro ocorre por causa de uma inconsistência na comparação dos IDs e uma pequena redundância no código de salvamento que pode estar limpando o estado do Streamlit.
+
+Abaixo, apresento os blocos corrigidos especificamente para a função page_cadastro.
+
+1. Correção da lógica de Seleção (Busca do ID)
+No seu código, a comparação estava sensível a tipos (String vs Inteiro). Alterei para usar str() em ambos os lados, garantindo que o next encontre o registro.
+
+2. Remoção de Lógica Duplicada
+Havia dois blocos de salvamento (if submit:) no seu código original. Removi a duplicidade para evitar que o app processe o salvamento duas vezes ou limpe os campos indevidamente.
+
+Substitua a sua função page_cadastro por esta:
+Python
+
 def page_cadastro(dados_atuais, sha_atual):
 
     ui_card_start("📝 Cadastro de Convênio")
 
     # Lista com ID + Nome para garantir segurança
     opcoes = ["+ Novo Convênio"] + [
-        f"{c['id']} — {safe_get(c, 'nome')}" for c in dados_atuais
+        f"{c.get('id')} — {safe_get(c, 'nome')}" for c in dados_atuais
     ]
 
-    escolha = st.selectbox("Selecione um convênio:", opcoes)
+    escolha = st.selectbox("Selecione um convênio para editar:", opcoes)
 
     # Determina ID real escolhido
     if escolha == "+ Novo Convênio":
         conv_id = None
         dados_conv = None
     else:
+        # Extrai o ID antes do travessão
         conv_id = escolha.split(" — ")[0]
-        dados_conv = next((c for c in dados_atuais if c["id"] == conv_id), None)
+        # Busca o convênio garantindo que a comparação seja entre Strings
+        dados_conv = next((c for c in dados_atuais if str(c.get("id")) == str(conv_id)), None)
 
     ui_card_end()
 
@@ -651,21 +662,17 @@ def page_cadastro(dados_atuais, sha_atual):
             nome = st.text_input("Nome do Convênio", value=safe_get(dados_conv, "nome"))
             codigo = st.text_input("Código", value=safe_get(dados_conv, "codigo"))
 
-            empresa = st.selectbox(
-                "Empresa Faturamento",
-                EMPRESAS_FATURAMENTO,
-                index=EMPRESAS_FATURAMENTO.index(safe_get(dados_conv, "empresa"))
-                if dados_conv and safe_get(dados_conv, "empresa") in EMPRESAS_FATURAMENTO
-                else 0
-            )
+            idx_empresa = 0
+            if dados_conv and safe_get(dados_conv, "empresa") in EMPRESAS_FATURAMENTO:
+                idx_empresa = EMPRESAS_FATURAMENTO.index(safe_get(dados_conv, "empresa"))
 
-            sistema = st.selectbox(
-                "Sistema",
-                SISTEMAS,
-                index=SISTEMAS.index(safe_get(dados_conv, "sistema_utilizado"))
-                if dados_conv and safe_get(dados_conv, "sistema_utilizado") in SISTEMAS
-                else 0
-            )
+            empresa = st.selectbox("Empresa Faturamento", EMPRESAS_FATURAMENTO, index=idx_empresa)
+
+            idx_sistema = 0
+            if dados_conv and safe_get(dados_conv, "sistema_utilizado") in SISTEMAS:
+                idx_sistema = SISTEMAS.index(safe_get(dados_conv, "sistema_utilizado"))
+
+            sistema = st.selectbox("Sistema", SISTEMAS, index=idx_sistema)
 
         # ---------------------- COLUNA 2 ----------------------
         with col2:
@@ -679,31 +686,20 @@ def page_cadastro(dados_atuais, sha_atual):
             envio = st.text_input("Prazo Envio", value=safe_get(dados_conv, "envio"))
             validade = st.text_input("Validade da Guia", value=safe_get(dados_conv, "validade"))
 
-            xml = st.radio(
-                "Envia XML?",
-                ["Sim", "Não"],
-                index=0 if safe_get(dados_conv, "xml") != "Não" else 1
-            )
+            xml = st.radio("Envia XML?", ["Sim", "Não"], 
+                           index=0 if safe_get(dados_conv, "xml") != "Não" else 1)
 
-            nf = st.radio(
-                "Exige Nota Fiscal?",
-                ["Sim", "Não"],
-                index=0 if safe_get(dados_conv, "nf") != "Não" else 1
-            )
+            nf = st.radio("Exige Nota Fiscal?", ["Sim", "Não"], 
+                          index=0 if safe_get(dados_conv, "nf") != "Não" else 1)
 
-        # --------------------------------------------------------
-        # BLOCO XML + NF
-        # --------------------------------------------------------
+        # ---------------------- BLOCO XML + NF ------------------
         colA, colB = st.columns(2)
 
         with colA:
-            versao_xml = st.selectbox(
-                "Versão XML (TISS)",
-                VERSOES_TISS,
-                index=VERSOES_TISS.index(safe_get(dados_conv, "versao_xml"))
-                if dados_conv and safe_get(dados_conv, "versao_xml") in VERSOES_TISS
-                else 0
-            )
+            idx_tiss = 0
+            if dados_conv and safe_get(dados_conv, "versao_xml") in VERSOES_TISS:
+                idx_tiss = VERSOES_TISS.index(safe_get(dados_conv, "versao_xml"))
+            versao_xml = st.selectbox("Versão XML (TISS)", VERSOES_TISS, index=idx_tiss)
 
         with colB:
             fluxo_nf = st.selectbox(
@@ -712,60 +708,40 @@ def page_cadastro(dados_atuais, sha_atual):
                 index=0 if safe_get(dados_conv, "fluxo_nf") == "Envia XML sem nota" else 1
             )
 
-        # --------------------------------------------------------
-        # TEXTOS LONGOS
-        # --------------------------------------------------------
         config_gerador = st.text_area("Configuração do Gerador XML", value=safe_get(dados_conv, "config_gerador"))
         doc_digitalizacao = st.text_area("Digitalização e Documentação", value=safe_get(dados_conv, "doc_digitalizacao"))
         observacoes = st.text_area("Observações Críticas", value=safe_get(dados_conv, "observacoes"))
 
-        # --------------------------------------------------------
-        # BOTÃO DE SALVAR
-        # --------------------------------------------------------
         submit = st.form_submit_button("💾 Salvar Dados")
 
         if submit:
-
-            # Dados consolidados
             novo_registro = {
-                "nome": nome,
-                "codigo": codigo,
-                "empresa": empresa,
-                "sistema_utilizado": sistema,
-                "site": site,
-                "login": login,
-                "senha": senha,
-                "prazo_retorno": retorno,
-                "envio": envio,
-                "validade": validade,
-                "xml": xml,
-                "nf": nf,
-                "versao_xml": versao_xml,
-                "fluxo_nf": fluxo_nf,
-                "config_gerador": config_gerador,
-                "doc_digitalizacao": doc_digitalizacao,
+                "nome": nome, "codigo": codigo, "empresa": empresa,
+                "sistema_utilizado": sistema, "site": site, "login": login,
+                "senha": senha, "prazo_retorno": retorno, "envio": envio,
+                "validade": validade, "xml": xml, "nf": nf,
+                "versao_xml": versao_xml, "fluxo_nf": fluxo_nf,
+                "config_gerador": config_gerador, "doc_digitalizacao": doc_digitalizacao,
                 "observacoes": observacoes,
             }
 
-            # 🔥 Novo convênio → gera ID
             if conv_id is None:
-                novo_registro["id"] = generate_id()
+                novo_registro["id"] = generate_id(dados_atuais)
                 dados_atuais.append(novo_registro)
-
-            # 🔥 Atualização → mantém ID
             else:
-                novo_registro["id"] = conv_id
-                idx = next(i for i, c in enumerate(dados_atuais) if c["id"] == conv_id)
-                dados_atuais[idx] = novo_registro
+                novo_registro["id"] = int(conv_id)
+                # Atualiza o item na lista original
+                for i, c in enumerate(dados_atuais):
+                    if str(c.get("id")) == str(conv_id):
+                        dados_atuais[i] = novo_registro
+                        break
 
-            # Salva no GitHub
             if github_save_file(dados_atuais, sha_atual):
-                st.success("✔ Dados salvos com sucesso!")
+                st.success(f"✔ Convênio {novo_registro['id']} salvo com sucesso!")
+                time.sleep(0.5)
                 st.rerun()
 
-    # --------------------------------------------------------
-    # DOWNLOAD DO PDF
-    # --------------------------------------------------------
+    # Botão de PDF (fora do form)
     if dados_conv:
         st.download_button(
             "📥 Baixar PDF do Convênio",
@@ -779,18 +755,30 @@ def page_cadastro(dados_atuais, sha_atual):
 # 10. PÁGINA — CONSULTA DE CONVÊNIOS
 # ============================================================
 
+
 def page_consulta(dados_atuais):
 
     if not dados_atuais:
         st.info("Nenhum convênio cadastrado.")
         return
 
-    # Seleção segura por ID
-    opcoes = sorted([f"{c['id']} — {safe_get(c, 'nome')}" for c in dados_atuais])
+    # Lista segura: caso falte ID
+    opcoes = sorted([
+        f"{safe_get(c,'id')} || {safe_get(c,'nome')}"
+        for c in dados_atuais
+    ])
+
     escolha = st.selectbox("Selecione o convênio:", opcoes)
 
-    conv_id = escolha.split(" — ")[0]
-    dados = next(c for c in dados_atuais if c["id"] == conv_id)
+    # Extrai ID de forma segura
+    conv_id = escolha.split(" || ")[0]
+
+    # Evita StopIteration
+    dados = next((c for c in dados_atuais if safe_get(c,"id") == conv_id), None)
+
+    if not dados:
+        st.error("Erro: convênio não encontrado no banco.")
+        return
 
     # Título grande
     ui_section_title(safe_get(dados, "nome"))
@@ -826,6 +814,7 @@ def page_consulta(dados_atuais):
     ui_block_info("⚠️ Observações Críticas", safe_get(dados, "observacoes"))
 
     st.caption("Manual de Faturamento — Visualização Premium")
+
 
 
 # ============================================================
@@ -910,6 +899,4 @@ def main():
 # Executar aplicação
 if __name__ == "__main__":
     main()
-
-
 
