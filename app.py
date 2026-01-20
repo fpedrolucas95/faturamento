@@ -636,7 +636,7 @@ elif menu == "Consulta de Convênios":
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    st.caption("GABMA Consultoria — Visualização Premium")
+    st.caption("Manual de Faturamento — Visualização Premium")
 
 
 # ============================================================
