@@ -664,9 +664,12 @@ def page_cadastro(dados_atuais):
                 # --- SALVAR (para novo OU editar) ---
                 if db.save(dados_atuais):
                     st.success(f"✔ Convênio {novo_registro['id']} salvo com sucesso!")
-                    # Limpa o cache manual para forçar a leitura do dado novo no próximo load
-                    db._cache_data = None 
-                    time.sleep(0.5)
+                    
+                    # --- AS TRÊS LINHAS QUE RESOLVEM O SEU PROBLEMA ---
+                    db._cache_data = None      # 1. Limpa o cache de dados do objeto
+                    db._cache_timestamp = 0    # 2. Reseta o cronômetro do cache
+                    time.sleep(1.2)            # 3. Dá tempo para o GitHub processar (importante!)
+                    
                     st.rerun()
 
     # --------------------------------------------------------
