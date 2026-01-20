@@ -423,7 +423,7 @@ def gerar_pdf(dados):
     pdf.set_y(-20)
     pdf.set_text_color(120, 120, 120)
     set_font(8, bold=False)
-    pdf.cell(0, 10, "GABMA Consultoria - Sistema Técnico de Convênios", align='C')
+    pdf.cell(0, 10, "Manual de faturamento", align='C')
 
     return bytes(pdf.output())
 
@@ -432,7 +432,7 @@ def gerar_pdf(dados):
 # ============================================================
 st.set_page_config(page_title="GABMA – Sistema Técnico", layout="wide")
 
-st.markdown(f"<div class='main-title'>💼 Sistema de Gestão GABMA</div>", unsafe_allow_html=True)
+st.markdown(f"<div class='main-title'>💼 Manual de faturamento</div>", unsafe_allow_html=True)
 
 dados_atuais, sha_atual = buscar_dados_github()
 
@@ -709,7 +709,7 @@ st.markdown(
 st.markdown(
     f"""
     <div class="header-premium">
-        <span class="header-title">💼 GABMA — Sistema Técnico Corporativo</span>
+        <span class="header-title">💼 Manual de faturamento</span>
     </div>
     """,
     unsafe_allow_html=True
@@ -726,7 +726,7 @@ st.markdown(
     f"""
     <br><br>
     <div style='text-align:center; color:#777; font-size:13px; padding:10px;'>
-        © 2026 — GABMA Consultoria · Sistema Técnico de Convênios<br>
+        © 2026 — Manual de faturamento<br>
         Desenvolvido com design corporativo Microsoft/MV
     </div>
     """,
