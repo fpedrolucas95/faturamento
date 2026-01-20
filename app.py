@@ -1,7 +1,6 @@
 
 # ============================================================
-#  APP.PY — PARTE 1
-#  Imports • Config • GitHub Functions • Design Microsoft/MV
+#  APP.PY — GABMA Sistema Técnico (Versão Completa)
 # ============================================================
 
 import streamlit as st
@@ -105,29 +104,13 @@ def buscar_dados_github():
 
 
 def sanitize_text(text):
-    """
-    Previne erros de largura do FPDF removendo caracteres ilegais,
-    espaços invisíveis, unicode non-renderable e normalizando tudo.
-    """
     if text is None:
         return ""
-
-    # Converter para string
     text = str(text)
-
-    # Normaliza Unicode (remove marcas combining, emojis inválidos, controls)
     text = unicodedata.normalize("NFKD", text)
-
-    # Remove caracteres que o FPDF não sabe medir (zero-width, escape invisível)
     text = re.sub(r"[\u200B-\u200F\u202A-\u202E\u2060-\u206F]", "", text)
-
-    # Remove caracteres de controle ASCII (exceto \n)
     text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", text)
-
-    # Remove quebras estranhas
-    text = text.replace("\r", "")
-
-    return text
+    return text.replace("\r", "")
 
 
 def salvar_dados_github(novos_dados, sha):
@@ -150,81 +133,33 @@ def salvar_dados_github(novos_dados, sha):
 
 
 # ============================================================
-#  APP.PY — PARTE 2
-#  Função PDF Premium (UTF-8 + Layout MV)
-#  Menu + Inicialização do App
+#  PDF — GERADOR PREMIUM COM WRAP CORRIGIDO
 # ============================================================
-
-# -----------------------------------------
-#     GERADOR DE PDF — LAYOUT PREMIUM
-# -----------------------------------------
-
-# -----------------------------------------
-#      GERADOR DE PDF — LAYOUT PREMIUM CORRIGIDO
-#      (quebras de linha + tabela sem corte)
-# -----------------------------------------
 def gerar_pdf(dados):
-    from fpdf import FPDF
-    import os
-    import math
-
     pdf = FPDF()
-    # Margens + quebra automática de página
     pdf.set_margins(10, 10, 10)
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    # -----------------------------
-    #  Fonte UTF-8 (DejaVu)
-    # -----------------------------
+    # Fontes
     fonte_normal = "DejaVuSans.ttf"
     fonte_bold = "DejaVuSans-Bold.ttf"
 
     if os.path.exists(fonte_normal):
         pdf.add_font("DejaVu", "", fonte_normal, uni=True)
+        pdf.add_font("DejaVu", "B", fonte_bold, uni=True)
         fonte_principal = "DejaVu"
-        if os.path.exists(fonte_bold):
-            pdf.add_font("DejaVu", "B", fonte_bold, uni=True)
-            estilo_b = "B"
-        else:
-            estilo_b = ""
     else:
-        # fallback
         fonte_principal = "Helvetica"
-        estilo_b = "B"
 
-    # -----------------------------
-    #  Helpers para tabela robusta
-    # -----------------------------
-
-    def check_page_break(h):
-        """Quebra de página manual para linhas de tabela mais altas."""
-        if pdf.get_y() + h > pdf.page_break_trigger:
-            pdf.add_page()
-
+    # ---- Funções internas ----
     def chunk_long_word(text, max_width):
-        """
-        Quebra palavras MUITO longas (URLs, tokens) por tamanho de caractere aproximado.
-        Evita estouro quando não há espaços.
-        """
-        txt = str(text or "")
-        if not txt:
-            return [""]
-        # cálculo aproximado de caracteres por linha
-        # usando a largura do 'M' como referência (caractere largo)
         char_w = max(pdf.get_string_width("M"), 0.01)
         max_chars = max(int((max_width - 2) / char_w), 1)
-        lines = []
-        for i in range(0, len(txt), max_chars):
-            lines.append(txt[i:i+max_chars])
-        return lines
+        return [text[i:i+max_chars] for i in range(0, len(text), max_chars)]
 
-    def wrap_text(text, max_width):
-        """
-        Quebra o texto por palavras respeitando a largura máxima.
-        Usa fallback de corte por caracteres para palavras gigantes.
-        """
-        txt = str(text or "")
+    def wrap_text(txt, max_width):
+        txt = sanitize_text(str(txt or ""))
         if not txt.strip():
             return [""]
 
@@ -233,167 +168,117 @@ def gerar_pdf(dados):
         current = ""
 
         for w in words:
-            if not current:
-                # Se a palavra isolada já estoura a largura, quebrar por caracteres
-                if pdf.get_string_width(w) > (max_width - 2):
-                    lines.extend(chunk_long_word(w, max_width))
-                else:
-                    current = w
+            # palavra gigante sem espaço
+            if pdf.get_string_width(w) > max_width:
+                lines.extend(chunk_long_word(w, max_width))
+                continue
+
+            candidate = f"{current} {w}".strip()
+            if pdf.get_string_width(candidate) <= max_width:
+                current = candidate
             else:
-                candidate = f"{current} {w}"
-                if pdf.get_string_width(candidate) <= (max_width - 2):
-                    current = candidate
-                else:
-                    # fecha a linha atual
-                    lines.append(current)
-                    # inicia a próxima linha; se a nova palavra for gigante, corta por chars
-                    if pdf.get_string_width(w) > (max_width - 2):
-                        lines.extend(chunk_long_word(w, max_width))
-                        current = ""
-                    else:
-                        current = w
+                lines.append(current)
+                current = w
 
         if current:
             lines.append(current)
 
         return lines
 
-    def draw_row(col_widths, data, aligns=None, line_h=6, pad=1):
-        """
-        Desenha uma linha de tabela com ALTURA UNIFORME entre as colunas,
-        quebrando texto por coluna sem cortar nada.
-
-        col_widths: lista com larguras (ex.: [45, 30, 25, 25, 65])
-        data: lista de strings (uma por coluna)
-        aligns: lista de alinhamentos ('L', 'C', 'R')
-        line_h: altura de cada linha de texto por célula
-        pad: padding interno esquerdo
-        """
-        aligns = aligns or ["L"] * len(col_widths)
-
-        # 1) Quebrar cada coluna em linhas
-        col_lines = []
-        for i, txt in enumerate(data):
-            col_lines.append(wrap_text(txt, col_widths[i]))
-
-        # 2) Numero máximo de linhas entre as colunas
-        max_lines = max(len(lines) for lines in col_lines)
+    def draw_row(col_w, data, aligns=None, line_h=6, pad=1):
+        aligns = aligns or ["L"] * len(col_w)
+        col_lines = [wrap_text(t, col_w[i]) for i, t in enumerate(data)]
+        max_lines = max(len(c) for c in col_lines)
         row_h = max_lines * line_h
 
-        # 3) Quebra de página se necessário
-        check_page_break(row_h)
+        if pdf.get_y() + row_h > pdf.page_break_trigger:
+            pdf.add_page()
 
-        # 4) Posição inicial da linha
-        x0 = pdf.get_x()
-        y0 = pdf.get_y()
+        x0, y0 = pdf.get_x(), pdf.get_y()
 
-        # 5) Desenhar borda de cada célula + texto linha a linha
-        for i, w in enumerate(col_widths):
-            x = pdf.get_x()
-            y = pdf.get_y()
-
-            # borda da célula (altura total da linha)
+        for i, w in enumerate(col_w):
+            x, y = pdf.get_x(), pdf.get_y()
             pdf.rect(x, y, w, row_h)
 
-            # imprimir as linhas daquela coluna
-            lines = col_lines[i]
-            for j, line in enumerate(lines):
+            for j, l in enumerate(col_lines[i]):
                 pdf.set_xy(x + pad, y + j * line_h)
-                # largura útil menos padding nos dois lados:
-                usable_w = w - pad * 2
-                align = aligns[i] if i < len(aligns) else "L"
-                pdf.cell(usable_w, line_h, line, border=0, ln=0, align=align)
+                pdf.cell(w - pad * 2, line_h, l, border=0, align=aligns[i])
 
-            # avança para próxima célula na mesma linha
             pdf.set_xy(x + w, y)
 
-        # 6) Move o cursor para o início da próxima linha
         pdf.set_xy(x0, y0 + row_h)
 
-    # -----------------------------
-    #  Cabeçalho
-    # -----------------------------
+    # ---- Cabeçalho ----
     pdf.set_fill_color(31, 73, 125)
     pdf.set_text_color(255, 255, 255)
-    pdf.set_font(fonte_principal, estilo_b, 16)
-    pdf.cell(0, 15, f"GUIA TÉCNICA: {str(dados.get('nome','')).upper()}", ln=True, align='C', fill=True)
+    pdf.set_font(fonte_principal, "B", 16)
+    pdf.cell(0, 15, f"GUIA TÉCNICA: {dados.get('nome','').upper()}", ln=True, align='C', fill=True)
     pdf.ln(5)
 
-    # -----------------------------
-    #  Seção 1 – Identificação
-    # -----------------------------
+    # ---- Seção 1 ----
     pdf.set_text_color(0, 0, 0)
     pdf.set_fill_color(230, 230, 230)
-    pdf.set_font(fonte_principal, estilo_b, 11)
+    pdf.set_font(fonte_principal, "B", 11)
     pdf.cell(0, 8, " 1. DADOS DE IDENTIFICAÇÃO E ACESSO", ln=True, fill=True)
-
-    pdf.set_font(fonte_principal, "", 10)
     pdf.ln(2)
-    # multi_cell evita cortes e respeita margens
-    pdf.multi_cell(0, 7, f"Empresa: {str(dados.get('empresa','N/A'))} | Código: {str(dados.get('codigo','N/A'))}")
-        CONTENT_WIDTH = pdf.w - pdf.l_margin - pdf.r_margin
-    
-    pdf.multi_cell(
-        CONTENT_WIDTH,
-        7,
-        sanitize_text(f"Portal: {dados.get('site','')}")
-    )
-    pdf.multi_cell(0, 7, f"Login: {str(dados.get('login',''))}  |  Senha: {str(dados.get('senha',''))}")
-    pdf.multi_cell(0, 7, f"Sistema: {str(dados.get('sistema_utilizado','N/A'))} | Retorno: {str(dados.get('prazo_retorno','N/A'))}")
+
+    CONTENT_WIDTH = pdf.w - pdf.l_margin - pdf.r_margin
+    pdf.set_font(fonte_principal, "", 9)
+
+    # Empresa / Código
+    pdf.multi_cell(CONTENT_WIDTH, 7,
+                   sanitize_text(f"Empresa: {dados.get('empresa','N/A')} | Código: {dados.get('codigo','N/A')}"))
+
+    # Portal longa (fix do erro!)
+    portal_text = sanitize_text(f"Portal: {dados.get('site','')}")
+    for line in wrap_text(portal_text, CONTENT_WIDTH):
+        pdf.multi_cell(CONTENT_WIDTH, 7, line)
+
+    pdf.multi_cell(CONTENT_WIDTH, 7,
+                   sanitize_text(f"Login: {dados.get('login','')}  |  Senha: {dados.get('senha','')}"))
+    pdf.multi_cell(CONTENT_WIDTH, 7,
+                   sanitize_text(f"Sistema: {dados.get('sistema_utilizado','N/A')} | Retorno: {dados.get('prazo_retorno','N/A')}"))
+
     pdf.ln(5)
 
-    # -----------------------------
-    #  Seção 2 – Tabela TISS
-    # -----------------------------
+    # ---- Seção 2 Tabela ----
     pdf.set_fill_color(230, 230, 230)
-    pdf.set_font(fonte_principal, estilo_b, 11)
+    pdf.set_font(fonte_principal, "B", 11)
     pdf.cell(0, 8, " 2. CRONOGRAMA E REGRAS TÉCNICAS", ln=True, fill=True)
     pdf.ln(2)
 
-    # Cabeçalho da Tabela
-    pdf.set_font(fonte_principal, estilo_b, 8)
+    pdf.set_font(fonte_principal, "B", 8)
     col_w = [45, 30, 25, 25, 65]
-    aligns = ['C', 'C', 'C', 'C', 'C']
-    draw_row(col_w, ["Prazo Envio", "Validade Guia", "XML / Versão", "Nota Fiscal", "Fluxo NF"], aligns=aligns, line_h=7)
+    header = ["Prazo Envio", "Validade Guia", "XML / Versão", "Nota Fiscal", "Fluxo NF"]
+    draw_row(col_w, header, aligns=['C'] * 5, line_h=7)
 
-    # Linha de dados (com texto grande sem cortes)
     pdf.set_font(fonte_principal, "", 8)
-    draw_row(
-        col_w,
-        [
-            sanitize_text(dados.get("envio","")),
-            f"{str(dados.get('validade',''))} dias",
-            f"{str(dados.get('xml',''))} / {str(dados.get('versao_xml','-'))}",
-            str(dados.get("nf","")),
-            str(dados.get("fluxo_nf","N/A"))
-        ],
-        aligns=aligns,
-        line_h=7
-    )
+    draw_row(col_w, [
+        dados.get("envio", ""),
+        f"{dados.get('validade','')} dias",
+        f"{dados.get('xml','')} / {dados.get('versao_xml','-')}",
+        dados.get("nf",""),
+        dados.get("fluxo_nf","N/A")
+    ], aligns=['C']*5, line_h=7)
+
     pdf.ln(5)
 
-    # -----------------------------
-    #  Seção 3 – Blocos (multi_cell)
-    # -----------------------------
+    # ---- Blocos ----
     def bloco(titulo, conteudo):
-        txt = str(conteudo or "").strip()
-        if not txt:
+        if not conteudo:
             return
-        pdf.set_font(fonte_principal, estilo_b, 11)
         pdf.set_fill_color(240, 240, 240)
+        pdf.set_font(fonte_principal, "B", 11)
         pdf.cell(0, 7, f" {titulo}", ln=True, fill=True)
-
         pdf.set_font(fonte_principal, "", 9)
-        pdf.multi_cell(0, 5, txt, border=1)
+        pdf.multi_cell(0, 5, sanitize_text(conteudo), border=1)
         pdf.ln(3)
 
-    bloco("CONFIGURAÇÃO DO GERADOR XML", dados.get("config_gerador", ""))
-    bloco("DIGITALIZAÇÃO E DOCUMENTAÇÃO", dados.get("doc_digitalizacao", ""))
-    bloco("OBSERVAÇÕES CRÍTICAS", dados.get("observacoes", ""))
+    bloco("CONFIGURAÇÃO DO GERADOR XML", dados.get("config_gerador"))
+    bloco("DIGITALIZAÇÃO E DOCUMENTAÇÃO", dados.get("doc_digitalizacao"))
+    bloco("OBSERVAÇÕES CRÍTICAS", dados.get("observacoes"))
 
-    # -----------------------------
-    #  Rodapé
-    # -----------------------------
+    # ---- Rodapé ----
     pdf.set_y(-20)
     pdf.set_text_color(120, 120, 120)
     pdf.set_font(fonte_principal, "", 8)
@@ -402,18 +287,16 @@ def gerar_pdf(dados):
     return bytes(pdf.output())
 
 
-
-# -----------------------------------------
+# ============================================================
 #       APP – INÍCIO
-# -----------------------------------------
-
+# ============================================================
 st.set_page_config(page_title="GABMA – Sistema Técnico", layout="wide")
 
 st.markdown(f"<div class='main-title'>💼 Sistema de Gestão GABMA</div>", unsafe_allow_html=True)
 
 dados_atuais, sha_atual = buscar_dados_github()
 
-# MENU LATERAL
+# MENU
 menu = st.sidebar.radio(
     "Navegação",
     ["Cadastrar / Editar", "Consulta de Convênios", "Visualizar Banco"]
@@ -421,12 +304,7 @@ menu = st.sidebar.radio(
 
 
 # ============================================================
-#  APP.PY — PARTE 3
-#  Cadastro / Consulta Premium / Visualizar Banco
-# ============================================================
-
-# ============================================================
-#           TELA — CADASTRAR / EDITAR CONVÊNIO
+#           CADASTRO & EDIÇÃO
 # ============================================================
 if menu == "Cadastrar / Editar":
 
@@ -437,35 +315,26 @@ if menu == "Cadastrar / Editar":
 
     dados_conv = next((c for c in dados_atuais if c["nome"] == escolha), None)
 
-    # Lista oficial das versões TISS completas
-    VERSOES_TISS = [
-        "4.03.00",
-        "4.02.00",
-        "4.01.00",
-        "01.06.00",
-        "3.05.00",
-        "3.04.01"
-    ]
+    VERSOES_TISS = ["4.03.00", "4.02.00", "4.01.00", "01.06.00", "3.05.00", "3.04.01"]
 
     with st.form("form_cadastro"):
-        
         col1, col2, col3 = st.columns(3)
 
-        # ------- COLUNA 1 -------
+        # Coluna 1
         with col1:
             nome = st.text_input("Nome do Convênio", value=dados_conv["nome"] if dados_conv else "")
             codigo = st.text_input("Código", value=dados_conv.get("codigo", "") if dados_conv else "")
             empresa = st.text_input("Empresa Faturamento", value=dados_conv.get("empresa", "") if dados_conv else "")
             sistema = st.selectbox("Sistema", ["Orizon", "Benner", "Maida", "Facil", "Visual TISS", "Próprio"])
 
-        # ------- COLUNA 2 -------
+        # Coluna 2
         with col2:
             site = st.text_input("Site/Portal", value=dados_conv["site"] if dados_conv else "")
             login = st.text_input("Login", value=dados_conv["login"] if dados_conv else "")
             senha = st.text_input("Senha", value=dados_conv["senha"] if dados_conv else "")
             retorno = st.text_input("Prazo Retorno", value=dados_conv.get("prazo_retorno", "") if dados_conv else "")
 
-        # ------- COLUNA 3 -------
+        # Coluna 3
         with col3:
             envio = st.text_input("Prazo Envio", value=dados_conv["envio"] if dados_conv else "")
             validade = st.text_input("Validade Guia", value=dados_conv["validade"] if dados_conv else "")
@@ -473,20 +342,15 @@ if menu == "Cadastrar / Editar":
             nf = st.radio("Exige NF?", ["Sim", "Não"], index=0 if not dados_conv or dados_conv["nf"] == "Sim" else 1)
 
         st.markdown("</div>", unsafe_allow_html=True)
-
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ------- LINHA ABAIXO (VERSÃO TISS E FLUXO) -------
         col_a, col_b = st.columns(2)
 
         v_xml = col_a.selectbox(
             "Versão XML (Padrão TISS)",
             VERSOES_TISS,
-            index=(
-                VERSOES_TISS.index(dados_conv.get("versao_xml"))
-                if dados_conv and dados_conv.get("versao_xml") in VERSOES_TISS
-                else 0
-            )
+            index=(VERSOES_TISS.index(dados_conv.get("versao_xml"))
+                if dados_conv and dados_conv.get("versao_xml") in VERSOES_TISS else 0)
         )
 
         fluxo_nf = col_b.selectbox(
@@ -539,7 +403,7 @@ if menu == "Cadastrar / Editar":
 
 
 # ============================================================
-#       TELA — CONSULTA PROFISSIONAL (DESIGN MICROSOFT/MV)
+#       CONSULTA DE CONVÊNIOS
 # ============================================================
 elif menu == "Consulta de Convênios":
 
@@ -554,7 +418,6 @@ elif menu == "Consulta de Convênios":
 
     dados = next(c for c in dados_atuais if c["nome"] == escolha)
 
-    # CABEÇALHO PREMIUM
     st.markdown(
         f"""
         <div style="
@@ -572,9 +435,8 @@ elif menu == "Consulta de Convênios":
         unsafe_allow_html=True
     )
 
-    # -------- CARD IDENTIFICAÇÃO --------
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<div class='card-title'>🧾 Dados de Identificação</div>", unsafe_allow_html=True)
+    # Identificação
+    st.markdown("<div class='card'><div class='card-title'>🧾 Dados de Identificação</div>", unsafe_allow_html=True)
     st.markdown(f"""
         <div class='info-line'>Empresa: <span class='value'>{dados.get('empresa','N/A')}</span></div>
         <div class='info-line'>Código: <span class='value'>{dados.get('codigo','N/A')}</span></div>
@@ -583,9 +445,8 @@ elif menu == "Consulta de Convênios":
     """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # -------- CARD ACESSO --------
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<div class='card-title'>🔐 Acesso ao Portal</div>", unsafe_allow_html=True)
+    # Acesso
+    st.markdown("<div class='card'><div class='card-title'>🔐 Acesso ao Portal</div>", unsafe_allow_html=True)
     st.markdown(f"""
         <div class='info-line'>Portal: <span class='value'>{dados['site']}</span></div>
         <div class='info-line'>Login: <span class='value'>{dados['login']}</span></div>
@@ -593,9 +454,8 @@ elif menu == "Consulta de Convênios":
     """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # -------- CARD TÉCNICO --------
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<div class='card-title'>📦 Regras Técnicas</div>", unsafe_allow_html=True)
+    # Técnicos
+    st.markdown("<div class='card'><div class='card-title'>📦 Regras Técnicas</div>", unsafe_allow_html=True)
     st.markdown(f"""
         <div class='info-line'>Prazo Envio: <span class='value'>{dados['envio']}</span></div>
         <div class='info-line'>Validade Guia: <span class='value'>{dados['validade']} dias</span></div>
@@ -606,25 +466,19 @@ elif menu == "Consulta de Convênios":
     """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # -------- BLOCOS ADICIONAIS --------
+    # Blocos extras
     if dados.get("config_gerador"):
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.markdown("<div class='card-title'>⚙️ Configuração XML</div>", unsafe_allow_html=True)
+        st.markdown("<div class='card'><div class='card-title'>⚙️ Configuração XML</div>", unsafe_allow_html=True)
         st.code(dados["config_gerador"])
         st.markdown("</div>", unsafe_allow_html=True)
 
     if dados.get("doc_digitalizacao"):
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.markdown("<div class='card-title'>🗂 Digitalização e Documentação</div>", unsafe_allow_html=True)
+        st.markdown("<div class='card'><div class='card-title'>🗂 Digitalização e Documentação</div>", unsafe_allow_html=True)
         st.info(dados["doc_digitalizacao"])
         st.markdown("</div>", unsafe_allow_html=True)
 
-    
-       
     if dados.get("observacoes"):
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.markdown("<div class='card-title'>⚠️ Observações Críticas</div>", unsafe_allow_html=True)
-    
+        st.markdown("<div class='card'><div class='card-title'>⚠️ Observações Críticas</div>", unsafe_allow_html=True)
         st.markdown(
             f"""
             <div style="
@@ -634,24 +488,19 @@ elif menu == "Consulta de Convênios":
                 padding: 12px 16px;
                 border-radius: 6px;
                 font-size: 15px;
-                line-height: 1.5;
-            ">
+                line-height: 1.5;">
                 {dados["observacoes"]}
             </div>
             """,
             unsafe_allow_html=True
         )
-    
         st.markdown("</div>", unsafe_allow_html=True)
-
-
 
     st.caption("GABMA Consultoria — Visualização Premium")
 
 
-
 # ============================================================
-#       TELA — VISUALIZAR BANCO COMPLETO
+#       VISUALIZAR BANCO
 # ============================================================
 elif menu == "Visualizar Banco":
 
@@ -666,21 +515,11 @@ elif menu == "Visualizar Banco":
 
 
 # ============================================================
-#  APP.PY — PARTE 4
-#  Refinamentos premium do design Microsoft/MV
+#  DESIGN FLUENT 2 + HEADER FIXO
 # ============================================================
-
-# -----------------------------------------
-#   CSS Premium Fluent (Microsoft Fluent 2)
-# -----------------------------------------
 st.markdown(
     f"""
     <style>
-
-        /* ================================ */
-        /*   ANIMAÇÕES ESMERALD SOFT       */
-        /* ================================ */
-
         .card {{
             transition: all 0.18s ease-in-out;
         }}
@@ -688,11 +527,6 @@ st.markdown(
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
         }}
-
-
-        /* ================================ */
-        /*   HEADER SUPER PREMIUM           */
-        /* ================================ */
 
         .header-premium {{
             position: sticky;
@@ -710,11 +544,6 @@ st.markdown(
             color: {PRIMARY_COLOR};
         }}
 
-
-        /* ================================ */
-        /*   BOTÕES FLUENT STYLE           */
-        /* ================================ */
-
         .stButton>button {{
             background-color: {PRIMARY_COLOR};
             color: white;
@@ -728,25 +557,15 @@ st.markdown(
             background-color: #16375E;
         }}
 
-        /* Radio e Select mais elegantes */
-        .stSelectbox, .stTextInput, .stTextArea, .stRadio {{
-            font-size: 15px!important;
-        }}
-
-        /* Ajuste suave no corpo */
         .block-container {{
             padding-top: 0px !important;
         }}
-
     </style>
     """,
     unsafe_allow_html=True
 )
 
-
-# ---------------------------------------------------
-#   HEADER PREMIUM FIXO (substitui título comum)
-# ---------------------------------------------------
+# HEADER FIXO
 st.markdown(
     f"""
     <div class="header-premium">
@@ -755,29 +574,21 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-st.write("")  # espaçamento
+st.write("")
 
-
-# ---------------------------------------------------
-#   BOTÃO GLOBAL DE ATUALIZAÇÃO (Topo)
-# ---------------------------------------------------
+# Sidebar Refresh
 st.sidebar.markdown("### 🔄 Atualização")
 if st.sidebar.button("Recarregar Sistema"):
     st.rerun()
 
-
-# ---------------------------------------------------
-#   FOOTER CORPORATIVO GABMA
-# ---------------------------------------------------
+# Footer
 st.markdown(
     f"""
     <br><br>
     <div style='text-align:center; color:#777; font-size:13px; padding:10px;'>
-        © {2026} — GABMA Consultoria · Sistema Técnico de Convênios<br>
+        © 2026 — GABMA Consultoria · Sistema Técnico de Convênios<br>
         Desenvolvido com design corporativo Microsoft/MV
     </div>
     """,
     unsafe_allow_html=True
 )
-
-
