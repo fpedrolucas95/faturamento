@@ -720,59 +720,46 @@ def page_cadastro(dados_atuais, sha_atual):
         # --------------------------------------------------------
         submit = st.form_submit_button("💾 Salvar Dados")
 
+        
         if submit:
+        
+                    # Dados consolidados
+                    novo_registro = {
+                        "nome": nome,
+                        "codigo": codigo,
+                        "empresa": empresa,
+                        "sistema_utilizado": sistema,
+                        "site": site,
+                        "login": login,
+                        "senha": senha,
+                        "prazo_retorno": retorno,
+                        "envio": envio,
+                        "validade": validade,
+                        "xml": xml,
+                        "nf": nf,
+                        "versao_xml": versao_xml,
+                        "fluxo_nf": fluxo_nf,
+                        "config_gerador": config_gerador,
+                        "doc_digitalizacao": doc_digitalizacao,
+                        "observacoes": observacoes,
+                    }
+        
+                    # Novo convênio (gera ID)
+                    if conv_id is None:
+                        novo_registro["id"] = generate_id(dados_atuais)
+                        dados_atuais.append(novo_registro)
+        
+                    # Atualizar convênio existente
+                    else:
+                        novo_registro["id"] = int(conv_id)
+                        idx = next(i for i, c in enumerate(dados_atuais) if str(c["id"]) == str(conv_id))
+                        dados_atuais[idx] = novo_registro
+        
+                    # SALVA APENAS UMA VEZ
+                    if github_save_file(dados_atuais, sha_atual):
+                        st.success("✔ Dados salvos com sucesso!")
+                        st.rerun()
 
-            # Dados consolidados
-            novo_registro = {
-                "nome": nome,
-                "codigo": codigo,
-                "empresa": empresa,
-                "sistema_utilizado": sistema,
-                "site": site,
-                "login": login,
-                "senha": senha,
-                "prazo_retorno": retorno,
-                "envio": envio,
-                "validade": validade,
-                "xml": xml,
-                "nf": nf,
-                "versao_xml": versao_xml,
-                "fluxo_nf": fluxo_nf,
-                "config_gerador": config_gerador,
-                "doc_digitalizacao": doc_digitalizacao,
-                "observacoes": observacoes,
-            }
-            
-            if conv_id is None:
-                novo_registro["id"] = generate_id(dados_atuais)
-                dados_atuais.append(novo_registro)
-            else:
-                novo_registro["id"] = int(conv_id)
-                # Localiza e atualiza o registro existente
-                idx = next(i for i, c in enumerate(dados_atuais) if str(c["id"]) == str(conv_id))
-                dados_atuais[idx] = novo_registro
-
-            # Salva no GitHub uma única vez
-            if github_save_file(dados_atuais, sha_atual):
-                st.success(f"✔ Convênio {novo_registro['id']} salvo com sucesso!")
-                time.sleep(0.5)
-                st.rerun()
-
-            # 🔥 Novo convênio → gera ID
-            if conv_id is None:
-                novo_registro["id"] = generate_id()
-                dados_atuais.append(novo_registro)
-
-            # 🔥 Atualização → mantém ID
-            else:
-                novo_registro["id"] = conv_id
-                idx = next(i for i, c in enumerate(dados_atuais) if c["id"] == conv_id)
-                dados_atuais[idx] = novo_registro
-
-            # Salva no GitHub
-            if github_save_file(dados_atuais, sha_atual):
-                st.success("✔ Dados salvos com sucesso!")
-                st.rerun()
 
     # --------------------------------------------------------
     # DOWNLOAD DO PDF
