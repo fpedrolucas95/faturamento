@@ -479,7 +479,7 @@ if menu == "Cadastrar / Editar":
 
     dados_conv = next((c for c in dados_atuais if c["nome"] == escolha), None)
 
-    VERSOES_TISS = ["4.03.00", "4.02.00", "4.01.00", "01.06.00", "3.05.00", "3.04.01"]
+    VERSOES_TISS = ["Não Envia", "4.03.00", "4.02.00", "4.01.00", "01.06.00", "3.05.00", "3.04.01"]
 
     with st.form("form_cadastro"):
         col1, col2, col3 = st.columns(3)
@@ -487,8 +487,14 @@ if menu == "Cadastrar / Editar":
         # Coluna 1
         with col1:
             nome = st.text_input("Nome do Convênio", value=dados_conv["nome"] if dados_conv else "")
-            codigo = st.text_input("Código", value=dados_conv.get("codigo", "") if dados_conv else "")
-            empresa = st.text_input("Empresa Faturamento", value=dados_conv.get("empresa", "") if dados_conv else "")
+            codigo = st.text_input("Código", value=dados_conv.get("codigo", "") if dados_conv else "")            
+            empresa = st.selectbox(
+                "Empresa Faturamento",
+                ["Integralis", "AMHP", "Outros"],
+                index=(["Integralis", "AMHP", "Outros"].index(dados_conv.get("empresa"))
+                       if dados_conv and dados_conv.get("empresa") in ["Integralis", "AMHP", "Outros"]
+                       else 0)
+            )
             sistema = st.selectbox("Sistema", ["Orizon", "Benner", "Maida", "Facil", "Visual TISS", "Próprio"])
 
         # Coluna 2
