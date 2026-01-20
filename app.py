@@ -331,7 +331,13 @@ def gerar_pdf(dados):
     pdf.ln(2)
     # multi_cell evita cortes e respeita margens
     pdf.multi_cell(0, 7, f"Empresa: {str(dados.get('empresa','N/A'))} | Código: {str(dados.get('codigo','N/A'))}")
-    pdf.multi_cell(0, 7, sanitize_text(f"Portal: {dados.get('site','')}"))
+        CONTENT_WIDTH = pdf.w - pdf.l_margin - pdf.r_margin
+    
+    pdf.multi_cell(
+        CONTENT_WIDTH,
+        7,
+        sanitize_text(f"Portal: {dados.get('site','')}")
+    )
     pdf.multi_cell(0, 7, f"Login: {str(dados.get('login',''))}  |  Senha: {str(dados.get('senha',''))}")
     pdf.multi_cell(0, 7, f"Sistema: {str(dados.get('sistema_utilizado','N/A'))} | Retorno: {str(dados.get('prazo_retorno','N/A'))}")
     pdf.ln(5)
