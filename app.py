@@ -1,7 +1,7 @@
 
 # ============================================================
-#  APP.PY — Manual de Faturamento
-#  Versão Reorganizada (OPÇÃO B — Estruturada)
+#  APP.PY — MANUAL DE FATURAMENTO (VERSÃO PREMIUM)
+#  ORGANIZADO • OTIMIZADO • SEGURO • COM ID ÚNICO
 # ============================================================
 
 # ------------------------------------------------------------
@@ -16,6 +16,8 @@ import pandas as pd
 from fpdf import FPDF
 import unicodedata
 import re
+import uuid
+import time
 
 # ------------------------------------------------------------
 # 2. CONFIGURAÇÃO DE ACESSO (SECRETS)
@@ -32,9 +34,9 @@ FILE_PATH = "dados.json"
 BRANCH = "main"
 
 # ------------------------------------------------------------
-# 3. CONSTANTES / PALETA MICROSOFT
+# 3. CONSTANTES / PALETA
 # ------------------------------------------------------------
-PRIMARY_COLOR = "#1F497D"     # Azul MS/MV
+PRIMARY_COLOR = "#1F497D"
 PRIMARY_LIGHT = "#E8EEF5"
 BG_LIGHT = "#F5F7FA"
 GREY_BORDER = "#D9D9D9"
@@ -54,45 +56,38 @@ EMPRESAS_FATURAMENTO = ["Integralis", "AMHP", "Outros"]
 
 SISTEMAS = ["Outros", "Orizon", "Benner", "Maida", "Facil", "Visual TISS", "Próprio"]
 
-
-# ============================================================
+# ------------------------------------------------------------
 # 4. CSS GLOBAL + HEADER FIXO
-# ============================================================
-
+# ------------------------------------------------------------
 CSS_GLOBAL = f"""
 <style>
 
-    /* Ajuste geral do container */
+    /* Ajuste geral */
     .block-container {{
         padding-top: 6rem !important;
-        max-width: 1200px;
+        max-width: 1200px !important;
     }}
 
-    /* HEADER FIXO (Glassmorphism) */
+    /* HEADER */
     .header-premium {{
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 70px;
-        background: rgba(255, 255, 255, 0.85);
+        top: 0; left: 0;
+        width: 100%; height: 70px;
+        background: rgba(255,255,255,0.85);
         backdrop-filter: blur(10px);
-        border-bottom: 1px solid {PRIMARY_COLOR}22;
-        display: flex;
-        align-items: center;
+        border-bottom: 1px solid {PRIMARY_COLOR}33;
+        display: flex; align-items: center;
         padding: 0 40px;
         z-index: 999;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.04);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
     }}
 
     .header-title {{
         font-size: 24px;
         font-weight: 700;
         color: {PRIMARY_COLOR};
-        display: flex;
-        align-items: center;
-        gap: 10px;
         letter-spacing: -0.5px;
+        display: flex; align-items: center; gap: 10px;
     }}
 
     /* Cards estilo Microsoft */
@@ -103,7 +98,7 @@ CSS_GLOBAL = f"""
         border: 1px solid #e1e4e8;
         box-shadow: 0 4px 6px rgba(0,0,0,0.03);
         margin-bottom: 24px;
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        transition: transform 0.15s, box-shadow 0.15s;
     }}
 
     .card:hover {{
@@ -111,7 +106,6 @@ CSS_GLOBAL = f"""
         box-shadow: 0 6px 14px rgba(0,0,0,0.06);
     }}
 
-    /* Títulos de cards */
     .card-title {{
         font-size: 20px;
         font-weight: 700;
@@ -119,7 +113,7 @@ CSS_GLOBAL = f"""
         color: {PRIMARY_COLOR};
     }}
 
-    /* Botões padrão */
+    /* Botões */
     .stButton > button {{
         background-color: {PRIMARY_COLOR} !important;
         color: white !important;
@@ -127,7 +121,6 @@ CSS_GLOBAL = f"""
         padding: 8px 18px !important;
         font-weight: 600 !important;
         border: none !important;
-        transition: 0.2s !important;
     }}
 
     .stButton > button:hover {{
@@ -136,13 +129,11 @@ CSS_GLOBAL = f"""
 
 </style>
 
-<!-- HEADER SUPERIOR -->
 <div class="header-premium">
     <span class="header-title">💼 Manual de Faturamento</span>
 </div>
 """
 
-# Renderização global
 st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
 
 
@@ -150,10 +141,15 @@ st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
 # 5. FUNÇÕES UTILITÁRIAS
 # ============================================================
 
+def generate_id():
+    """Gera ID único padrão UUID4 para cada convênio."""
+    return str(uuid.uuid4())
+
+
 def sanitize_text(text: str) -> str:
     """
-    Remove caracteres invisíveis, normaliza e converte para string segura.
-    Evita erros em PDF e em exibição.
+    Normaliza strings removendo caracteres invisíveis, unicode corrompido
+    e retornando sempre uma string segura para PDF e interface.
     """
     if text is None:
         return ""
@@ -170,7 +166,8 @@ def sanitize_text(text: str) -> str:
 
 def safe_get(d: dict, key: str, default=""):
     """
-    Acesso seguro ao dicionário (evita sobrescritas entre convênios).
+    Acesso seguro a dicionários.
+    Evita erros quando dados estão faltando ou o convênio é novo.
     """
     if not isinstance(d, dict):
         return default
@@ -179,7 +176,7 @@ def safe_get(d: dict, key: str, default=""):
 
 def chunk_text(text, size):
     """
-    Divide longas palavras sem espaços (para PDF).
+    Divide palavras extremamente longas (sem espaços) para PDF.
     """
     text = sanitize_text(text or "")
     return [text[i:i+size] for i in range(0, len(text), size)]
@@ -187,10 +184,9 @@ def chunk_text(text, size):
 
 def wrap_text(text, pdf, max_width):
     """
-    Quebra de linha respeitando largura do PDF.
+    Quebra texto para PDF respeitando o limite de largura real.
     """
     text = sanitize_text(text)
-
     if not text:
         return [""]
 
@@ -198,7 +194,6 @@ def wrap_text(text, pdf, max_width):
     lines, current = [], ""
 
     for w in words:
-        # Palavra maior que o limite → quebra forçada
         if pdf.get_string_width(w) > max_width:
             if current:
                 lines.append(current)
@@ -207,7 +202,6 @@ def wrap_text(text, pdf, max_width):
             continue
 
         candidate = f"{current} {w}".strip() if current else w
-
         if pdf.get_string_width(candidate) <= max_width:
             current = candidate
         else:
@@ -221,89 +215,107 @@ def wrap_text(text, pdf, max_width):
 
 
 # ============================================================
-# 6. FUNÇÕES GITHUB — CRUD DO BANCO JSON
+# 6. FUNÇÕES GITHUB — CRUD PREMIUM SEGURO (ID + SHA DINÂMICO)
 # ============================================================
 
 def github_get_file():
     """
-    Lê o arquivo JSON hospedado no GitHub.
-    Retorna:
-        - lista de convênios
-        - SHA do arquivo (necessário para atualizar)
+    Lê o arquivo JSON do GitHub SEM CACHE e garante que todos os convênios
+    possuam um ID único permanente, adicionando quando necessário.
     """
-    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}?ref={BRANCH}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    url = (
+        f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/"
+        f"{FILE_PATH}?ref={BRANCH}&t={int(time.time())}"
+    )
+
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
 
     try:
         response = requests.get(url, headers=headers)
 
-        # Se o arquivo existe
         if response.status_code == 200:
             content = response.json()
-            decoded_bytes = base64.b64decode(content["content"])
-            data = json.loads(decoded_bytes.decode("utf-8"))
+
+            decoded = base64.b64decode(content["content"]).decode("utf-8")
+            data = json.loads(decoded)
+
+            # 🔥 Verifica se todos têm ID — compatível com versões antigas
+            modified = False
+            for item in data:
+                if "id" not in item:
+                    item["id"] = generate_id()
+                    modified = True
+
+            # Se IDs foram criados agora, salva imediatamente
+            if modified:
+                github_save_file(data, content["sha"])
+
             return data, content["sha"]
 
-        # Arquivo ainda não existe → retorna banco vazio
         elif response.status_code == 404:
+            # Banco ainda não existe
             return [], None
 
         else:
-            st.error(f"⚠️ Erro ao carregar dados do GitHub (HTTP {response.status_code})")
+            st.error(f"⚠️ Erro ao carregar dados GitHub (HTTP {response.status_code})")
             return [], None
 
     except Exception as e:
-        st.error(f"❌ Erro inesperado ao buscar dados no GitHub:\n{e}")
+        st.error(f"❌ Erro ao consultar GitHub: {e}")
         return [], None
 
 
-
-def github_save_file(data, sha):
+def github_save_file(data, previous_sha):
     """
-    Salva o JSON atualizado no GitHub.
-    Recebe:
-        - data : lista de convênios
-        - sha  : necessário para atualizar arquivo existente
+    Salva o JSON atualizado no GitHub utilizando o SHA mais recente possível.
+    Evita erros 409 (Conflict) e garante consistência.
     """
+    # 🔍 Sempre pega o SHA mais recente
+    _, latest_sha = github_get_file()
+    sha_to_use = latest_sha or previous_sha
 
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
 
     try:
-        # Serializa e codifica
         json_string = json.dumps(data, indent=4, ensure_ascii=False)
         encoded = base64.b64encode(json_string.encode("utf-8")).decode("utf-8")
 
         payload = {
-            "message": "Update Manual de Faturamento",
+            "message": "Update Manual de Faturamento — GABMA",
             "content": encoded,
-            "branch": BRANCH
+            "branch": BRANCH,
+            "sha": sha_to_use
         }
-
-        if sha:
-            payload["sha"] = sha
 
         response = requests.put(url, headers=headers, json=payload)
 
         if response.status_code in (200, 201):
             return True
-        else:
-            st.error(f"❌ Falha ao salvar no GitHub (HTTP {response.status_code})")
-            return False
+
+        st.error(f"❌ Erro GitHub {response.status_code}: {response.text}")
+        return False
 
     except Exception as e:
-        st.error(f"❌ Erro inesperado ao salvar JSON no GitHub:\n{e}")
+        st.error(f"❌ Falha ao salvar no GitHub: {e}")
         return False
 
 
 # ============================================================
-# 7. GERAÇÃO DO PDF — VERSÃO ORGANIZADA E PROFISSIONAL
+# 7. GERAÇÃO DO PDF — VERSÃO ORGANIZADA, PROFISSIONAL E ESTÁVEL
 # ============================================================
 
 def gerar_pdf(dados):
     """
-    Gera PDF técnico completo do convênio utilizando FPDF.
-    Código totalmente organizado e seguro.
+    Gera PDF técnico detalhado do convênio utilizando FPDF.
+    Inclui seções, tabelas, quebras inteligentes e layout corporativo.
     """
 
     pdf = FPDF()
@@ -335,15 +347,14 @@ def gerar_pdf(dados):
         except:
             pdf.set_font("Helvetica", style, size)
 
-    # Área útil
     CONTENT_WIDTH = pdf.w - pdf.l_margin - pdf.r_margin
 
     # --------------------------------------------------------
-    # Helpers internos para PDF
+    # FUNÇÕES AUXILIARES DO PDF
     # --------------------------------------------------------
 
     def cell_label_value(label, value, label_w=40, h=7):
-        """Linha padrão Label: Valor."""
+        """Linha 'Label: Valor' com quebra automática."""
         label = sanitize_text(label)
         value = sanitize_text(value)
 
@@ -356,7 +367,6 @@ def gerar_pdf(dados):
         if pdf.get_string_width(value) <= usable:
             pdf.cell(usable, h, value, ln=1)
         else:
-            # Quebra controlada
             lines = wrap_text(value, pdf, usable)
             pdf.cell(usable, h, lines[0], ln=1)
             for ln_text in lines[1:]:
@@ -364,21 +374,18 @@ def gerar_pdf(dados):
                 pdf.cell(usable, h, ln_text, ln=1)
 
     def two_cols(label1, val1, label2, val2, label_w=38, gap=6, h=7):
-        """Duas colunas lado a lado."""
+        """Duas colunas lado a lado com quebra automática."""
         col_width = (CONTENT_WIDTH - gap) / 2
 
-        # Preprocessamento
         val1 = sanitize_text(val1)
         val2 = sanitize_text(val2)
 
         lines_left = wrap_text(val1, pdf, col_width - label_w)
         lines_right = wrap_text(val2, pdf, col_width - label_w)
-
         max_lines = max(len(lines_left), len(lines_right))
-        row_height = max_lines * h
+        row_h = max_lines * h
 
-        # Quebra de página se necessário
-        if pdf.get_y() + row_height > pdf.page_break_trigger:
+        if pdf.get_y() + row_h > pdf.page_break_trigger:
             pdf.add_page()
 
         y_start = pdf.get_y()
@@ -388,7 +395,6 @@ def gerar_pdf(dados):
         pdf.set_xy(pdf.l_margin, y_start)
         pdf.cell(label_w, h, f"{label1}:")
         set_font(9, False)
-
         x_start_left = pdf.get_x()
         for i, txt in enumerate(lines_left):
             pdf.set_xy(x_start_left, y_start + i * h)
@@ -400,16 +406,15 @@ def gerar_pdf(dados):
         pdf.set_xy(x_right, y_start)
         pdf.cell(label_w, h, f"{label2}:")
         set_font(9, False)
-
         x_start_right = pdf.get_x()
         for i, txt in enumerate(lines_right):
             pdf.set_xy(x_start_right, y_start + i * h)
             pdf.cell(col_width - label_w, h, txt)
 
-        pdf.set_y(y_start + row_height)
+        pdf.set_y(y_start + row_h)
 
     def table_row(widths, values, aligns=None, h=6):
-        """Linha de tabela com quebra automática e altura uniforme."""
+        """Linha de tabela com bordas, múltiplas linhas e altura uniforme."""
         aligns = aligns or ["L"] * len(widths)
 
         processed = [wrap_text(v, pdf, widths[i] - 2) for i, v in enumerate(values)]
@@ -446,7 +451,7 @@ def gerar_pdf(dados):
     pdf.set_text_color(0, 0, 0)
 
     # --------------------------------------------------------
-    # SEÇÃO 1 — DADOS DE IDENTIFICAÇÃO
+    # SEÇÃO 1 — IDENTIFICAÇÃO
     # --------------------------------------------------------
     pdf.set_fill_color(230, 230, 230)
     set_font(11, True)
@@ -536,20 +541,20 @@ def gerar_pdf(dados):
 # ============================================================
 
 def ui_card_start(title: str):
-    """Inicia um card estilizado (abertura)."""
+    """Inicia um card estilizado (versão Microsoft)."""
     st.markdown(f"""
         <div class='card'>
-            <div class='card-title'>{title}</div>
+            <div class='card-title'>{sanitize_text(title)}</div>
     """, unsafe_allow_html=True)
 
 
 def ui_card_end():
-    """Fecha o card."""
+    """Fecha um card."""
     st.markdown("</div>", unsafe_allow_html=True)
 
 
 def ui_section_title(text: str):
-    """Título centralizado utilizado em páginas inteiras."""
+    """Título centralizado para páginas completas."""
     st.markdown(
         f"""
         <div style="
@@ -585,7 +590,7 @@ def ui_info_line(label: str, value: str):
 
 
 def ui_block_info(title: str, content: str):
-    """Mostra um bloco com conteúdo explicativo (documentação, observações, etc.)."""
+    """Exibe blocos de conteúdo longo com destaque lateral."""
     if not content:
         return
 
@@ -614,26 +619,34 @@ def ui_block_info(title: str, content: str):
 # ============================================================
 
 def page_cadastro(dados_atuais, sha_atual):
+
     ui_card_start("📝 Cadastro de Convênio")
 
-    # Lista de convênios
-    nomes = ["+ Novo Convênio"] + sorted([safe_get(c, "nome") for c in dados_atuais])
-    escolha = st.selectbox("Selecione um convênio:", nomes)
+    # Lista com ID + Nome para garantir segurança
+    opcoes = ["+ Novo Convênio"] + [
+        f"{c['id']} — {safe_get(c, 'nome')}" for c in dados_atuais
+    ]
 
-    dados_conv = next((c for c in dados_atuais if safe_get(c, "nome") == escolha), None)
+    escolha = st.selectbox("Selecione um convênio:", opcoes)
+
+    # Determina ID real escolhido
+    if escolha == "+ Novo Convênio":
+        conv_id = None
+        dados_conv = None
+    else:
+        conv_id = escolha.split(" — ")[0]
+        dados_conv = next((c for c in dados_atuais if c["id"] == conv_id), None)
 
     ui_card_end()
 
     # --------------------------------------------------------
-    # FORMULÁRIO PRINCIPAL
+    # FORMULÁRIO COMPLETO
     # --------------------------------------------------------
     with st.form("form_cadastro"):
 
         col1, col2, col3 = st.columns(3)
 
-        # ------------------------
-        # COLUNA 1
-        # ------------------------
+        # ---------------------- COLUNA 1 ----------------------
         with col1:
             nome = st.text_input("Nome do Convênio", value=safe_get(dados_conv, "nome"))
             codigo = st.text_input("Código", value=safe_get(dados_conv, "codigo"))
@@ -654,21 +667,17 @@ def page_cadastro(dados_atuais, sha_atual):
                 else 0
             )
 
-        # ------------------------
-        # COLUNA 2
-        # ------------------------
+        # ---------------------- COLUNA 2 ----------------------
         with col2:
             site = st.text_input("Site/Portal", value=safe_get(dados_conv, "site"))
             login = st.text_input("Login", value=safe_get(dados_conv, "login"))
             senha = st.text_input("Senha", value=safe_get(dados_conv, "senha"))
             retorno = st.text_input("Prazo Retorno", value=safe_get(dados_conv, "prazo_retorno"))
 
-        # ------------------------
-        # COLUNA 3
-        # ------------------------
+        # ---------------------- COLUNA 3 ----------------------
         with col3:
             envio = st.text_input("Prazo Envio", value=safe_get(dados_conv, "envio"))
-            validade = st.text_input("Validade Guia", value=safe_get(dados_conv, "validade"))
+            validade = st.text_input("Validade da Guia", value=safe_get(dados_conv, "validade"))
 
             xml = st.radio(
                 "Envia XML?",
@@ -677,21 +686,19 @@ def page_cadastro(dados_atuais, sha_atual):
             )
 
             nf = st.radio(
-                "Exige NF?",
+                "Exige Nota Fiscal?",
                 ["Sim", "Não"],
                 index=0 if safe_get(dados_conv, "nf") != "Não" else 1
             )
 
-        st.write("")  # Margem inferior
-
         # --------------------------------------------------------
-        # BLOCO EXTRA: XML / FLUXO
+        # BLOCO XML + NF
         # --------------------------------------------------------
         colA, colB = st.columns(2)
 
         with colA:
             versao_xml = st.selectbox(
-                "Versão XML (Padrão TISS)",
+                "Versão XML (TISS)",
                 VERSOES_TISS,
                 index=VERSOES_TISS.index(safe_get(dados_conv, "versao_xml"))
                 if dados_conv and safe_get(dados_conv, "versao_xml") in VERSOES_TISS
@@ -700,7 +707,7 @@ def page_cadastro(dados_atuais, sha_atual):
 
         with colB:
             fluxo_nf = st.selectbox(
-                "Fluxo Nota",
+                "Fluxo da Nota",
                 ["Envia XML sem nota", "Envia NF junto com o lote"],
                 index=0 if safe_get(dados_conv, "fluxo_nf") == "Envia XML sem nota" else 1
             )
@@ -708,7 +715,7 @@ def page_cadastro(dados_atuais, sha_atual):
         # --------------------------------------------------------
         # TEXTOS LONGOS
         # --------------------------------------------------------
-        config_gerador = st.text_area("Configuração Gerador XML", value=safe_get(dados_conv, "config_gerador"))
+        config_gerador = st.text_area("Configuração do Gerador XML", value=safe_get(dados_conv, "config_gerador"))
         doc_digitalizacao = st.text_area("Digitalização e Documentação", value=safe_get(dados_conv, "doc_digitalizacao"))
         observacoes = st.text_area("Observações Críticas", value=safe_get(dados_conv, "observacoes"))
 
@@ -718,6 +725,8 @@ def page_cadastro(dados_atuais, sha_atual):
         submit = st.form_submit_button("💾 Salvar Dados")
 
         if submit:
+
+            # Dados consolidados
             novo_registro = {
                 "nome": nome,
                 "codigo": codigo,
@@ -738,16 +747,18 @@ def page_cadastro(dados_atuais, sha_atual):
                 "observacoes": observacoes,
             }
 
-            # Novo convênio
-            if escolha == "+ Novo Convênio":
+            # 🔥 Novo convênio → gera ID
+            if conv_id is None:
+                novo_registro["id"] = generate_id()
                 dados_atuais.append(novo_registro)
 
-            # Atualizar existente
+            # 🔥 Atualização → mantém ID
             else:
-                idx = next(i for i, c in enumerate(dados_atuais) if safe_get(c, "nome") == escolha)
+                novo_registro["id"] = conv_id
+                idx = next(i for i, c in enumerate(dados_atuais) if c["id"] == conv_id)
                 dados_atuais[idx] = novo_registro
 
-            # Salvar no GitHub
+            # Salva no GitHub
             if github_save_file(dados_atuais, sha_atual):
                 st.success("✔ Dados salvos com sucesso!")
                 st.rerun()
@@ -769,68 +780,50 @@ def page_cadastro(dados_atuais, sha_atual):
 # ============================================================
 
 def page_consulta(dados_atuais):
+
     if not dados_atuais:
         st.info("Nenhum convênio cadastrado.")
         return
 
-    # Seleção do convênio
-    nomes_conv = sorted([safe_get(c, "nome") for c in dados_atuais])
-    escolha = st.selectbox("Selecione o convênio:", nomes_conv)
+    # Seleção segura por ID
+    opcoes = sorted([f"{c['id']} — {safe_get(c, 'nome')}" for c in dados_atuais])
+    escolha = st.selectbox("Selecione o convênio:", opcoes)
 
-    dados = next(c for c in dados_atuais if safe_get(c, "nome") == escolha)
+    conv_id = escolha.split(" — ")[0]
+    dados = next(c for c in dados_atuais if c["id"] == conv_id)
 
-    # Título grande central
+    # Título grande
     ui_section_title(safe_get(dados, "nome"))
 
-    # ========================================================
-    # DADOS DE IDENTIFICAÇÃO
-    # ========================================================
+    # ------------- DADOS DE IDENTIFICAÇÃO -------------
     ui_card_start("🧾 Dados de Identificação")
-
     ui_info_line("Empresa", safe_get(dados, "empresa"))
     ui_info_line("Código", safe_get(dados, "codigo"))
     ui_info_line("Sistema", safe_get(dados, "sistema_utilizado"))
-    ui_info_line("Retorno", safe_get(dados, "prazo_retorno"))
-
+    ui_info_line("Prazo de Retorno", safe_get(dados, "prazo_retorno"))
     ui_card_end()
 
-    # ========================================================
-    # ACESSO AO PORTAL
-    # ========================================================
+    # ------------- ACESSO AO PORTAL -------------------
     ui_card_start("🔐 Acesso ao Portal")
-
     ui_info_line("Portal", safe_get(dados, "site"))
     ui_info_line("Login", safe_get(dados, "login"))
     ui_info_line("Senha", safe_get(dados, "senha"))
-
     ui_card_end()
 
-    # ========================================================
-    # REGRAS TÉCNICAS
-    # ========================================================
+    # ------------- REGRAS TÉCNICAS --------------------
     ui_card_start("📦 Regras Técnicas")
-
     ui_info_line("Prazo Envio", safe_get(dados, "envio"))
-    ui_info_line("Validade Guia", f"{safe_get(dados, 'validade')} dias")
+    ui_info_line("Validade da Guia", safe_get(dados, "validade"))
     ui_info_line("Envia XML?", safe_get(dados, "xml"))
     ui_info_line("Versão XML", safe_get(dados, "versao_xml"))
     ui_info_line("Exige NF?", safe_get(dados, "nf"))
     ui_info_line("Fluxo da Nota", safe_get(dados, "fluxo_nf"))
-
     ui_card_end()
 
-    # ========================================================
-    # BLOCOS EXTRAS
-    # ========================================================
-
-    if safe_get(dados, "config_gerador"):
-        ui_block_info("⚙️ Configuração XML", safe_get(dados, "config_gerador"))
-
-    if safe_get(dados, "doc_digitalizacao"):
-        ui_block_info("🗂 Digitalização e Documentação", safe_get(dados, "doc_digitalizacao"))
-
-    if safe_get(dados, "observacoes"):
-        ui_block_info("⚠️ Observações Críticas", safe_get(dados, "observacoes"))
+    # ------------- BLOCOS EXTRAS ----------------------
+    ui_block_info("⚙️ Configuração XML", safe_get(dados, "config_gerador"))
+    ui_block_info("🗂 Digitalização e Documentação", safe_get(dados, "doc_digitalizacao"))
+    ui_block_info("⚠️ Observações Críticas", safe_get(dados, "observacoes"))
 
     st.caption("Manual de Faturamento — Visualização Premium")
 
@@ -840,19 +833,20 @@ def page_consulta(dados_atuais):
 # ============================================================
 
 def page_visualizar_banco(dados_atuais):
+
     ui_card_start("📋 Banco de Dados Completo")
 
     if dados_atuais:
         df = pd.DataFrame(dados_atuais)
         st.dataframe(df, use_container_width=True)
     else:
-        st.info("⚠️ Banco vazio. Nenhum convênio cadastrado ainda.")
+        st.info("⚠️ Banco vazio.")
 
     ui_card_end()
 
 
 # ============================================================
-# 12. MAIN APP — ROTEAMENTO E ESTRUTURA FINAL
+# 12. MAIN APP — ROTEAMENTO, CARREGAMENTO E ESTRUTURA FINAL
 # ============================================================
 
 def main():
@@ -861,10 +855,14 @@ def main():
         layout="wide"
     )
 
-    # Carregar dados do GitHub
+    # --------------------------------------------------------
+    # CARREGAR BANCO DO GITHUB
+    # --------------------------------------------------------
     dados_atuais, sha_atual = github_get_file()
 
-    # Sidebar
+    # --------------------------------------------------------
+    # SIDEBAR — Navegação
+    # --------------------------------------------------------
     st.sidebar.title("📚 Navegação")
 
     menu = st.sidebar.radio(
@@ -877,11 +875,14 @@ def main():
     )
 
     st.sidebar.markdown("---")
+
     st.sidebar.markdown("### 🔄 Atualizar Sistema")
     if st.sidebar.button("Recarregar"):
         st.rerun()
 
+    # --------------------------------------------------------
     # ROTEAMENTO DAS PÁGINAS
+    # --------------------------------------------------------
     if menu == "Cadastrar / Editar":
         page_cadastro(dados_atuais, sha_atual)
 
@@ -892,13 +893,13 @@ def main():
         page_visualizar_banco(dados_atuais)
 
     # --------------------------------------------------------
-    # Rodapé
+    # Rodapé Premium
     # --------------------------------------------------------
     st.markdown(
         f"""
         <br><br>
         <div style='text-align:center; color:#777; font-size:13px; padding:10px;'>
-            © 2026 — Manual de Faturamento<br>
+            © 2026 — Manual de Faturamento GABMA<br>
             Desenvolvido com design corporativo Microsoft/MV
         </div>
         """,
@@ -909,10 +910,6 @@ def main():
 # Executar aplicação
 if __name__ == "__main__":
     main()
-
-
-
-
 
 
 
