@@ -58,11 +58,18 @@ def salvar_dados_github(novos_dados, sha):
 # -----------------------------------------
 #     GERADOR DE PDF — LAYOUT PREMIUM
 # -----------------------------------------
+
+# --- GERADOR DE PDF (LAYOUT PREMIUM ATUALIZADO E UTF-8) ---
 def gerar_pdf(dados):
+    from fpdf import FPDF
+    import os
+
     pdf = FPDF()
     pdf.add_page()
 
-    # Carregar fonte UTF-8
+    # --------------------------------------------------
+    #   FONTES UTF‑8 (DejaVu)
+    # --------------------------------------------------
     fonte_normal = "DejaVuSans.ttf"
     fonte_bold = "DejaVuSans-Bold.ttf"
 
@@ -80,14 +87,18 @@ def gerar_pdf(dados):
         fonte_principal = "Helvetica"
         estilo_b = "B"
 
-    # Cabeçalho
+    # --------------------------------------------------
+    #   CABEÇALHO
+    # --------------------------------------------------
     pdf.set_fill_color(31, 73, 125)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font(fonte_principal, estilo_b, 16)
     pdf.cell(0, 15, f"GUIA TÉCNICA: {dados['nome'].upper()}", ln=True, align='C', fill=True)
     pdf.ln(5)
 
-    # Seção 1
+    # --------------------------------------------------
+    #   SEÇÃO 1 — IDENTIFICAÇÃO E ACESSO
+    # --------------------------------------------------
     pdf.set_text_color(0, 0, 0)
     pdf.set_font(fonte_principal, estilo_b, 11)
     pdf.set_fill_color(230, 230, 230)
@@ -101,12 +112,15 @@ def gerar_pdf(dados):
     pdf.write(7, f"Sistema: {dados.get('sistema_utilizado', 'N/A')} | Retorno: {dados.get('prazo_retorno', 'N/A')}\n")
     pdf.ln(5)
 
-    # Seção 2 — Tabela
+    # --------------------------------------------------
+    #   SEÇÃO 2 — TABELA TISS
+    # --------------------------------------------------
     pdf.set_font(fonte_principal, estilo_b, 11)
     pdf.set_fill_color(230, 230, 230)
     pdf.cell(0, 8, " 2. CRONOGRAMA E REGRAS TÉCNICAS", ln=True, fill=True)
     pdf.ln(2)
 
+    # Cabeçalho
     pdf.set_font(fonte_principal, estilo_b, 8)
     pdf.cell(50, 8, "Prazo Envio", 1, 0, 'C')
     pdf.cell(30, 8, "Validade Guia", 1, 0, 'C')
@@ -114,6 +128,7 @@ def gerar_pdf(dados):
     pdf.cell(25, 8, "Nota Fiscal", 1, 0, 'C')
     pdf.cell(60, 8, "Fluxo NF", 1, 1, 'C')
 
+    # Conteúdo
     pdf.set_font(fonte_principal, "", 8)
     pdf.cell(50, 8, dados["envio"][:30], 1, 0, 'C')
     pdf.cell(30, 8, f"{dados['validade']} dias", 1, 0, 'C')
@@ -122,7 +137,9 @@ def gerar_pdf(dados):
     pdf.cell(60, 8, dados.get('fluxo_nf', 'N/A')[:35], 1, 1, 'C')
     pdf.ln(5)
 
-    # Seção 3 — blocos
+    # --------------------------------------------------
+    #   SEÇÃO 3 — BLOCOS
+    # --------------------------------------------------
     def bloco(titulo, conteudo):
         if conteudo:
             pdf.set_font(fonte_principal, estilo_b, 11)
@@ -137,13 +154,17 @@ def gerar_pdf(dados):
     bloco("DIGITALIZAÇÃO E DOCUMENTAÇÃO", dados.get("doc_digitalizacao", ""))
     bloco("OBSERVAÇÕES CRÍTICAS", dados["observacoes"])
 
-    # Rodapé
+    # --------------------------------------------------
+    #   RODAPÉ
+    # --------------------------------------------------
     pdf.set_y(-20)
     pdf.set_font(fonte_principal, "", 8)
     pdf.set_text_color(150, 150, 150)
     pdf.cell(0, 10, "GABMA Consultoria - Gestão de Faturamento Médico", align='C')
 
+    # Retorna bytes do PDF
     return bytes(pdf.output())
+
 
 # -----------------------------------------
 #       STREAMLIT — INTERFACE PRINCIPAL
