@@ -237,32 +237,28 @@ def github_get_file():
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     
     try:
+        response = requests.get(url, headers=headers)
         if response.status_code == 200:
             content = response.json()
             decoded = base64.b64decode(content["content"]).decode("utf-8")
             data = json.loads(decoded)
-    
-            # 🔥 Migração: Converte IDs para int e garante que todos tenham ID
+            
+            # Migração para ID Decimal
             modified = False
             for i, item in enumerate(data):
                 if "id" not in item or isinstance(item["id"], str):
-                    # Se for novo ou se for um UUID antigo (string)
-                    item["id"] = i + 1 
+                    item["id"] = i + 1
                     modified = True
-    
+            
             if modified:
                 github_save_file(data, content["sha"])
-    
             return data, content["sha"]
-    
+        
         elif response.status_code == 404:
-            # Banco ainda não existe
             return [], None
-
         else:
-            st.error(f"⚠️ Erro ao carregar dados GitHub (HTTP {response.status_code})")
+            st.error(f"⚠️ Erro GitHub: {response.status_code}")
             return [], None
-
     except Exception as e:
         st.error(f"❌ Erro ao consultar GitHub: {e}")
         return [], None
