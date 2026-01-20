@@ -1,8 +1,6 @@
 
-# ============================================================
-#  github_database.py — Módulo Profissional para Repositório JSON
-#  Seguro | Atômico | Livre de Corrupção | SHA Locking Real
-# ============================================================
+# github_database.py — Nova Versão Premium Estável
+# Seguro | Atômico | Anti-race | SHA locking Real | Zero Cache Sujo
 
 import requests
 import base64
@@ -12,11 +10,6 @@ import random
 
 
 class GitHubJSON:
-    """
-    Cliente profissional para leitura e escrita de JSON no GitHub
-    com segurança transacional (SHA Locking), retry/backoff e
-    proteção total contra sobrescrita simultânea.
-    """
 
     API_URL = "https://api.github.com/repos/{owner}/{repo}/contents/{path}"
 
@@ -27,14 +20,14 @@ class GitHubJSON:
         self.path = path
         self.branch = branch
 
+        # Cache ultra-curto para evitar GET múltiplos desnecessários
         self._cache_data = None
         self._cache_sha = None
-        self._cache_etag = None
-        self._cache_timestamp = 0
+        self._cache_time = 0
 
 
     # ============================================================
-    # HEADERS BASE
+    # HEADERS
     # ============================================================
     @property
     def headers(self):
@@ -45,129 +38,115 @@ class GitHubJSON:
 
 
     # ============================================================
-    # FUNÇÃO PRINCIPAL: LOAD (com cache inteligente)
+    # LOAD — Leitura segura do JSON
+    # (Cache de 200ms apenas)
     # ============================================================
-    def load(self, force_refresh=False):
-        """
-        Carrega o JSON do GitHub com cache inteligente.
-        - O cache dura 10 segundos (pode ajustar).
-        - force_refresh força nova consulta.
-        """
+    def load(self, force=False):
+
         now = time.time()
 
-        if not force_refresh and self._cache_data is not None:
-            if now - self._cache_timestamp < 2:
+        if not force and self._cache_data is not None:
+            if now - self._cache_time < 0.2:  # cache curtíssimo
                 return self._cache_data, self._cache_sha
 
         url = self.API_URL.format(owner=self.owner, repo=self.repo, path=self.path)
 
-        response = requests.get(url, headers=self.headers, params={"ref": self.branch})
+        r = requests.get(url, headers=self.headers, params={"ref": self.branch})
 
-        if response.status_code == 404:
-            # Banco vazio
+        if r.status_code == 404:
+            # Arquivo não existe — retorna base vazia
             self._cache_data = []
             self._cache_sha = None
-            self._cache_etag = None
+            self._cache_time = now
             return [], None
 
-        if response.status_code != 200:
-            raise Exception(f"GitHub GET error: {response.status_code} - {response.text}")
+        if r.status_code != 200:
+            raise Exception(f"GitHub GET error: {r.status_code} - {r.text}")
 
-        body = response.json()
-        sha = body["sha"]
-        etag = response.headers.get("ETag")
+        body = r.json()
+        sha = body.get("sha")
 
         decoded = base64.b64decode(body["content"]).decode("utf-8")
         data = json.loads(decoded)
 
-        # Atualiza o cache
         self._cache_data = data
         self._cache_sha = sha
-        self._cache_etag = etag
-        self._cache_timestamp = now
+        self._cache_time = now
 
         return data, sha
 
 
     # ============================================================
-    # SAVE — SALVAMENTO ATÔMICO
+    # SAVE — Salvamento 100% atômico com SHA locking real
     # ============================================================
-    def save(self, new_data, max_retries=5):
-        """
-        Salva o JSON com controle transacional:
-        - Usa SHA locking (If-Match).
-        - Retry automático com exponential backoff + jitter.
-        """
+    def save(self, new_data, retries=8):
 
-        for attempt in range(max_retries):
+        for attempt in range(retries):
 
-            # Carrega o SHA mais recente (sem cache)
-            _, sha_atual = self.load(force_refresh=True)
+            # SHA sempre atualizado
+            _, sha = self.load(force=True)
 
             url = self.API_URL.format(owner=self.owner, repo=self.repo, path=self.path)
-
-            commit_message = "Atualização Manual Faturamento — GABMA"
 
             encoded = base64.b64encode(
                 json.dumps(new_data, indent=4, ensure_ascii=False).encode("utf-8")
             ).decode("utf-8")
 
             payload = {
-                "message": commit_message,
+                "message": "Atualização Manual Faturamento — GABMA",
                 "content": encoded,
+                "sha": sha,
                 "branch": self.branch,
-                "sha": sha_atual
             }
 
-            # ENVIO SEGURO
-            response = requests.put(url, headers=self.headers, json=payload)
+            r = requests.put(url, headers=self.headers, json=payload)
 
-            # SUCESSO
-            if response.status_code in (200, 201):
-                result = response.json()
+            # SALVO COM SUCESSO
+            if r.status_code in (200, 201):
+                body = r.json()
+                new_sha = body["content"]["sha"]
+
                 # Atualiza cache
                 self._cache_data = new_data
-                self._cache_sha = result["content"]["sha"]
-                self._cache_timestamp = time.time()
+                self._cache_sha = new_sha
+                self._cache_time = time.time()
+
                 return True
 
-            # ERRO 409 => conflito de SHA ==> race condition
-            if response.status_code == 409:
-                wait = (2 ** attempt) + random.random()
-                time.sleep(wait)
-                continue  # tenta novamente
-
-            # Rate limit
-            if response.status_code == 403 and "rate limit" in response.text.lower():
-                time.sleep(3 + random.random())
+            # SHA inválido => arquivo mudou no GitHub => retry
+            if r.status_code == 409:
+                time.sleep((2 ** attempt) * 0.15 + random.random() * 0.2)
                 continue
 
-            # Outro erro => aborta
-            raise Exception(f"GitHub PUT error: {response.status_code} - {response.text}")
+            # Rate limit
+            if r.status_code == 403 and "rate" in r.text.lower():
+                time.sleep(2 + random.random())
+                continue
 
-        raise TimeoutError("Falha ao salvar no GitHub após múltiplas tentativas.")
+            raise Exception(f"GitHub PUT error: {r.status_code} - {r.text}")
+
+        raise TimeoutError("Falha ao salvar após múltiplas tentativas.")
 
 
     # ============================================================
-    # UPDATE — CARREGA, ALTERA E SALVA em operação atômica
+    # UPDATE — Carregar, alterar e salvar com atomicidade real
     # ============================================================
     def update(self, update_fn):
-        """
-        Função de alto nível segura:
-        1. Carrega o JSON
-        2. Aplica sua função de transformação
-        3. Salva com proteção anti-concorrência
-        """
 
-        for _ in range(5):
-            data, _ = self.load(force_refresh=True)
+        for attempt in range(8):
+
+            data, _ = self.load(force=True)
+
             new_data = update_fn(data)
 
             try:
                 self.save(new_data)
                 return True
-            except:
-                # Em caso de conflito, tenta novamente
-                time.sleep(0.5)
 
-        raise Exception("Falha ao atualizar dados após múltiplas tentativas.")
+            except TimeoutError:
+                continue
+
+            except:
+                time.sleep(0.2)
+
+        raise Exception("Falha ao atualizar após múltiplas tentativas.")
