@@ -560,7 +560,7 @@ def page_cadastro():
     """
 
     # 🔥 Recarrega sempre dados frescos do GitHub
-    dados_atuais, _ = db.load(force_refresh=True)
+    dados_atuais, _ = db.load(force=True)
     dados_atuais = list(dados_atuais)  # segurança contra mutação
 
     ui_card_start("📝 Cadastro de Convênio")
