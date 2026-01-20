@@ -260,16 +260,17 @@ def wrap_text(text, pdf, max_width):
 
 def gerar_pdf(dados):
     """
-    Gera PDF técnico 100% fiel ao modelo enviado,
-    usando as larguras da versão antiga.
+    Gera PDF técnico detalhado do convênio utilizando FPDF.
+    Inclui seções, tabelas, quebras inteligentes e layout corporativo.
     """
+
     pdf = FPDF()
-    pdf.set_margins(12, 12, 12)
-    pdf.set_auto_page_break(auto=True, margin=12)
+    pdf.set_margins(10, 10, 10)
+    pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
     # --------------------------------------------------------
-    # FONTES
+    # CONFIGURAÇÃO DE FONTES
     # --------------------------------------------------------
     fonte_normal = "DejaVuSans.ttf"
     fonte_bold = "DejaVuSans-Bold.ttf"
@@ -285,107 +286,200 @@ def gerar_pdf(dados):
     else:
         FONT = "Helvetica"
 
-    def font(size=10, bold=False):
+    def set_font(size=10, bold=False):
         style = "B" if bold else ""
         try:
             pdf.set_font(FONT, style, size)
         except:
             pdf.set_font("Helvetica", style, size)
 
-    CONTENT = pdf.w - pdf.l_margin - pdf.r_margin
+    CONTENT_WIDTH = pdf.w - pdf.l_margin - pdf.r_margin
 
     # --------------------------------------------------------
-    # CABEÇALHO
+    # FUNÇÕES AUXILIARES DO PDF
+    # --------------------------------------------------------
+
+    def cell_label_value(label, value, label_w=40, h=7):
+        """Linha 'Label: Valor' com quebra automática."""
+        label = sanitize_text(label)
+        value = sanitize_text(value)
+
+        set_font(9, True)
+        pdf.cell(label_w, h, f"{label}:")
+        set_font(9, False)
+
+        usable = CONTENT_WIDTH - label_w
+
+        if pdf.get_string_width(value) <= usable:
+            pdf.cell(usable, h, value, ln=1)
+        else:
+            lines = wrap_text(value, pdf, usable)
+            pdf.cell(usable, h, lines[0], ln=1)
+            for ln_text in lines[1:]:
+                pdf.set_x(pdf.l_margin + label_w)
+                pdf.cell(usable, h, ln_text, ln=1)
+
+    def two_cols(label1, val1, label2, val2, label_w=38, gap=6, h=7):
+        """Duas colunas lado a lado com quebra automática."""
+        col_width = (CONTENT_WIDTH - gap) / 2
+
+        val1 = sanitize_text(val1)
+        val2 = sanitize_text(val2)
+
+        lines_left = wrap_text(val1, pdf, col_width - label_w)
+        lines_right = wrap_text(val2, pdf, col_width - label_w)
+        max_lines = max(len(lines_left), len(lines_right))
+        row_h = max_lines * h
+
+        if pdf.get_y() + row_h > pdf.page_break_trigger:
+            pdf.add_page()
+
+        y_start = pdf.get_y()
+
+        # Coluna esquerda
+        set_font(9, True)
+        pdf.set_xy(pdf.l_margin, y_start)
+        pdf.cell(label_w, h, f"{label1}:")
+        set_font(9, False)
+        x_start_left = pdf.get_x()
+        for i, txt in enumerate(lines_left):
+            pdf.set_xy(x_start_left, y_start + i * h)
+            pdf.cell(col_width - label_w, h, txt)
+
+        # Coluna direita
+        x_right = pdf.l_margin + col_width + gap
+        set_font(9, True)
+        pdf.set_xy(x_right, y_start)
+        pdf.cell(label_w, h, f"{label2}:")
+        set_font(9, False)
+        x_start_right = pdf.get_x()
+        for i, txt in enumerate(lines_right):
+            pdf.set_xy(x_start_right, y_start + i * h)
+            pdf.cell(col_width - label_w, h, txt)
+
+        pdf.set_y(y_start + row_h)
+
+    def table_row(widths, values, aligns=None, h=6):
+        """Linha de tabela com bordas, múltiplas linhas e altura uniforme."""
+        aligns = aligns or ["L"] * len(widths)
+
+        processed = [wrap_text(v, pdf, widths[i] - 2) for i, v in enumerate(values)]
+        max_lines = max(len(col) for col in processed)
+        row_h = max_lines * h
+
+        if pdf.get_y() + row_h > pdf.page_break_trigger:
+            pdf.add_page()
+
+        x0 = pdf.get_x()
+        y0 = pdf.get_y()
+
+        for i, width in enumerate(widths):
+            x = pdf.get_x()
+            pdf.rect(x, y0, width, row_h)
+            for j, line in enumerate(processed[i]):
+                pdf.set_xy(x + 1, y0 + j * h)
+                pdf.cell(width - 2, h, line, align=aligns[i])
+            pdf.set_x(x + width)
+
+        pdf.set_xy(x0, y0 + row_h)
+
+    # --------------------------------------------------------
+    # CABEÇALHO PRINCIPAL
     # --------------------------------------------------------
     pdf.set_fill_color(31, 73, 125)
-    pdf.set_text_color(255,255,255)
-    font(18, True)
-    pdf.cell(0, 14, f"GUIA TÉCNICA: {safe_get(dados,'nome').upper()}", ln=1, align="C", fill=True)
+    pdf.set_text_color(255, 255, 255)
+    set_font(16, True)
+
+    nome_conv = safe_get(dados, "nome").upper()
+    pdf.cell(0, 15, f"GUIA TÉCNICA: {nome_conv}", ln=True, align="C", fill=True)
+
     pdf.ln(4)
-    pdf.set_text_color(0,0,0)
+    pdf.set_text_color(0, 0, 0)
 
     # --------------------------------------------------------
-    # SEÇÃO 1
+    # SEÇÃO 1 — IDENTIFICAÇÃO
     # --------------------------------------------------------
-    pdf.set_fill_color(230,230,230)
-    font(11, True)
-    pdf.cell(0, 8, " 1. DADOS DE IDENTIFICAÇÃO E ACESSO", ln=1, fill=True)
+    pdf.set_fill_color(230, 230, 230)
+    set_font(11, True)
+    pdf.cell(0, 8, " 1. DADOS DE IDENTIFICAÇÃO E ACESSO", ln=True, fill=True)
     pdf.ln(2)
 
-    font(10, False)
-    pdf.multi_cell(0, 6, f"Empresa: {safe_get(dados,'empresa')} | Código: {safe_get(dados,'codigo')}")
-    pdf.multi_cell(0, 6, f"Portal: {safe_get(dados,'site')}")
-    pdf.multi_cell(0, 6, f"Login: {safe_get(dados,'login')} | Senha: {safe_get(dados,'senha')}")
-    pdf.multi_cell(0, 6, f"Sistema: {safe_get(dados,'sistema_utilizado')} | Retorno: {safe_get(dados,'prazo_retorno')}")
+    two_cols("Empresa", safe_get(dados, "empresa"),
+             "Código", safe_get(dados, "codigo"))
+
+    cell_label_value("Portal", safe_get(dados, "site"))
+
+    two_cols("Login", safe_get(dados, "login"),
+             "Senha", safe_get(dados, "senha"))
+
+    two_cols("Sistema", safe_get(dados, "sistema_utilizado"),
+             "Retorno", safe_get(dados, "prazo_retorno"))
+
     pdf.ln(4)
 
     # --------------------------------------------------------
-    # SEÇÃO 2 — TABELA
+    # SEÇÃO 2 — REGRAS TÉCNICAS (TABELA)
     # --------------------------------------------------------
-    pdf.set_fill_color(230,230,230)
-    font(11, True)
-    pdf.cell(0, 8, " 2. CRONOGRAMA E REGRAS TÉCNICAS", ln=1, fill=True)
+    pdf.set_fill_color(230, 230, 230)
+    set_font(11, True)
+    pdf.cell(0, 8, " 2. CRONOGRAMA E REGRAS TÉCNICAS", ln=True, fill=True)
     pdf.ln(2)
 
-    # Mesmas larguras da versão antiga
-    widths = [40, 30, 32, 30, 60]
     headers = ["Prazo Envio", "Validade Guia", "XML / Versão", "Nota Fiscal", "Fluxo NF"]
+    widths = [40, 30, 32, 30, 60]
+    aligns = ["C"] * 5
 
-    # ---- Cabeçalho da tabela ----
-    font(10, True)
-    x = pdf.get_x()
-    y = pdf.get_y()
+    set_font(9, True)
+    table_row(widths, headers, aligns=aligns, h=7)
 
-    for w, width in enumerate(widths):
-        pdf.rect(x, y, width, 8)
-        pdf.set_xy(x + 1, y + 2)
-        pdf.cell(width - 2, 4, headers[w], align="C")
-        x += width
+    set_font(9, False)
+    xml_flag = safe_get(dados, "xml")
+    xml_ver = safe_get(dados, "versao_xml")
 
-    pdf.ln(8)
+    table_row(
+        widths,
+        [
+            safe_get(dados, "envio"),
+            f"{safe_get(dados, 'validade')} dias" if safe_get(dados, "validade") else "—",
+            f"{xml_flag} / {xml_ver}",
+            safe_get(dados, "nf"),
+            safe_get(dados, "fluxo_nf")
+        ],
+        aligns=aligns,
+        h=7
+    )
 
-    # ---- Valores ----
-    font(10, False)
-    valores = [
-        safe_get(dados, "envio"),
-        safe_get(dados, "validade") + " dias" if safe_get(dados, "validade") else "—",
-        f"{safe_get(dados,'xml')} / {safe_get(dados,'versao_xml')}",
-        safe_get(dados,"nf"),
-        safe_get(dados,"fluxo_nf")
-    ]
-
-    x = pdf.get_x()
-    y = pdf.get_y()
-
-    for i, width in enumerate(widths):
-        pdf.rect(x, y, width, 8)
-        pdf.set_xy(x + 1, y + 2)
-        pdf.cell(width - 2, 4, valores[i], align="C")
-        x += width
-
-    pdf.ln(12)
+    pdf.ln(5)
 
     # --------------------------------------------------------
-    # SEÇÃO 3 — OBSERVAÇÕES (FIEL AO MODELO)
+    # SEÇÃO 3 — BLOCOS EXTRAS
     # --------------------------------------------------------
-    pdf.set_fill_color(230,230,230)
-    font(11, True)
-    pdf.cell(0, 8, " OBSERVAÇÕES CRÍTICAS", ln=1, fill=True)
-    pdf.ln(1)
+    def bloco(titulo, campo):
+        texto = safe_get(dados, campo)
+        if not texto:
+            return
 
-    font(10, False)
-    pdf.multi_cell(0, 6, safe_get(dados, "observacoes"), border=1)
-    pdf.ln(3)
+        pdf.set_fill_color(240, 240, 240)
+        set_font(11, True)
+        pdf.cell(0, 7, f" {titulo}", ln=True, fill=True)
+
+        set_font(9, False)
+        pdf.multi_cell(0, 5, texto, border=1)
+        pdf.ln(3)
+
+    bloco("CONFIGURAÇÃO DO GERADOR XML", "config_gerador")
+    bloco("DIGITALIZAÇÃO E DOCUMENTAÇÃO", "doc_digitalizacao")
+    bloco("OBSERVAÇÕES CRÍTICAS", "observacoes")
 
     # --------------------------------------------------------
     # RODAPÉ
     # --------------------------------------------------------
-    pdf.set_y(-15)
-    font(8)
-    pdf.set_text_color(120,120,120)
-    pdf.cell(0, 8, "Manual de Faturamento — GABMA", align="C")
+    pdf.set_y(-20)
+    set_font(8, False)
+    pdf.set_text_color(120, 120, 120)
+    pdf.cell(0, 10, "Manual de Faturamento — GABMA", align="C")
 
-    return pdf.output(dest="S").encode("latin-1")
+    return bytes(pdf.output())
 
 
 # ============================================================
