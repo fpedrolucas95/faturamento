@@ -1,126 +1,147 @@
 import streamlit as st
-from fpdf import FPDF
+import requests
+import base64
+import json
 import re
+from fpdf import FPDF
 
-# --- CONFIGURAÇÕES DA PÁGINA ---
-st.set_page_config(page_title="GABMA - Gestão de Faturamento", layout="wide")
+# --- CONFIGURAÇÕES DE ACESSO (Secrets) ---
+try:
+    GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
+    REPO_OWNER = st.secrets["REPO_OWNER"]
+    REPO_NAME = st.secrets["REPO_NAME"]
+except:
+    st.error("Configure os Secrets (GITHUB_TOKEN, REPO_OWNER, REPO_NAME) no Streamlit Cloud.")
+    st.stop()
 
-# --- FUNÇÃO DE EXTRAÇÃO (PARSER) ---
-def extrair_dados_manual(texto_manual):
-    # Lista de convênios baseada no seu manual fornecido
-    convenios_identificados = [
-        "ASSEFAZ", "ASTE", "AMIL", "ASFUB", "ASSPUB", "ASPDF", 
-        "BENECAP", "BACEN", "CAPESESP", "CASEMBRAPA", "CBMDF", 
-        "CONAB", "E-VIDA", "FACEB", "GEAP", "GDF SAÚDE", "IDEAL",
-        "INTERMÉDICA", "LIFE EMPRESARIAL", "MEDSENIOR", "PLAN ASSISTE",
-        "SAÚDE CAIXA", "SIS SENADO", "CARE PLUS", "BRADESCO", "CASSI", 
-        "MEDISERVICE", "POSTAL SAÚDE", "SERPRO", "GAMA SAÚDE", "SULAMÉRICA",
-        "TRE", "FASCAL", "UNIVIDA", "TOP LIFE", "TRT", "TRF"
-    ]
+FILE_PATH = "dados.json"
+BRANCH = "main"
+
+# --- FUNÇÕES DA API DO GITHUB ---
+def buscar_dados_github():
+    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}?ref={BRANCH}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    response = requests.get(url, headers=headers)
     
+    if response.status_code == 200:
+        content = response.json()
+        decoded_data = base64.b64decode(content['content']).decode('utf-8')
+        return json.loads(decoded_data), content['sha']
+    else:
+        # Se o arquivo não existir, retorna lista vazia
+        return [], None
+
+def salvar_dados_github(novos_dados, sha):
+    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    json_string = json.dumps(novos_dados, indent=4, ensure_ascii=False)
+    encoded_content = base64.b64encode(json_string.encode('utf-8')).decode('utf-8')
+    
+    payload = {
+        "message": "Update faturamento via GABMA System",
+        "content": encoded_content,
+        "branch": BRANCH
+    }
+    if sha:
+        payload["sha"] = sha
+        
+    response = requests.put(url, headers=headers, json=payload)
+    return response.status_code in [200, 201]
+
+# --- INTELIGÊNCIA DE EXTRAÇÃO ---
+def extrair_dados_manual(texto_manual):
+    # Lista de convênios para busca baseada no seu manual
+    convenios_lista = ["ASSEFAZ", "AMIL", "CBMDF", "GDF SAÚDE", "GEAP", "BRADESCO", "SAÚDE CAIXA", "CASSI", "POSTAL SAÚDE", "E-VIDA", "CONAB"]
     dados_extraidos = []
-    for i, nome in enumerate(convenios_identificados):
+    for i, nome in enumerate(convenios_lista):
         inicio = texto_manual.find(nome + ":")
         if inicio == -1: continue
-        
-        # Define o fim do bloco buscando o próximo convênio
         fim = len(texto_manual)
-        for proximo in convenios_identificados[i+1:]:
+        for proximo in convenios_lista[i+1:]:
             pos_proximo = texto_manual.find(proximo + ":")
             if pos_proximo != -1 and pos_proximo > inicio:
                 fim = pos_proximo
                 break
-        
         bloco = texto_manual[inicio:fim]
-        
-        # Regex para extrair dados
-        site = re.search(r'https?://[^\s]+', bloco)
-        validade = re.search(r'Validade.*?(\d+)\s*dias', bloco, re.IGNORECASE)
-        envio = re.search(r'Data de envio:\s*(.*?)(?=\.|\n)', bloco)
-        
         dados_extraidos.append({
-            "convenio": nome,
-            "site": site.group(0) if site else "",
-            "login": "", # Manual não costuma ter login/senha por segurança
-            "senha": "",
-            "validade": validade.group(1) if validade else "",
-            "envio": envio.group(1) if envio else "",
+            "nome": nome,
+            "site": re.search(r'https?://[^\s]+', bloco).group(0) if re.search(r'https?://[^\s]+', bloco) else "",
+            "login": "", "senha": "",
+            "envio": re.search(r'Data de envio:\s*(.*?)(?=\.|\n)', bloco).group(1) if re.search(r'Data de envio:\s*(.*?)(?=\.|\n)', bloco) else "Ver manual",
+            "validade": re.search(r'Validade.*?(\d+)\s*dias', bloco, re.IGNORECASE).group(1) if re.search(r'Validade.*?(\d+)\s*dias', bloco, re.IGNORECASE) else "",
             "xml": "Sim" if "XML" in bloco.upper() else "Não",
-            "nf": "Sim" if ("NOTA FISCAL" in bloco.upper() or "NF" in bloco.upper()) else "Não",
-            "texto_completo": bloco.strip()
+            "nf": "Sim" if "NF" in bloco.upper() else "Não",
+            "observacoes": bloco.strip()
         })
     return dados_extraidos
 
-# --- FUNÇÃO GERADORA DE PDF ---
+# --- GERADOR DE PDF ---
 def gerar_pdf(dados):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 16)
-    pdf.cell(200, 10, f"Formulário de Faturamento: {dados['convenio']}", ln=True, align='C')
+    pdf.cell(200, 10, f"Formulário de Faturamento: {dados['nome']}", ln=True, align='C')
     pdf.ln(10)
-    
-    secoes = [
-        ("1. Acesso e Portal", f"Site: {dados['site']}\nLogin: {dados['login']}\nSenha: {dados['senha']}\nXML: {dados['xml']}"),
-        ("2. Cronograma", f"Envio: {dados['envio']}\nValidade: {dados['validade']} dias"),
-        ("3. Nota Fiscal", f"Exige NF: {dados['nf']}"),
-        ("4. Observações Extraídas do Manual", dados['texto_completo'])
-    ]
-    
-    for titulo, conteudo in secoes:
-        pdf.set_font("Arial", "B", 12)
-        pdf.cell(200, 10, titulo, ln=True)
-        pdf.set_font("Arial", "", 10)
-        pdf.multi_cell(0, 6, conteudo)
-        pdf.ln(5)
-        
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(200, 10, "1. Acesso e Portal", ln=True)
+    pdf.set_font("Arial", "", 10)
+    pdf.multi_cell(0, 7, f"Site: {dados['site']}\nLogin: {dados['login']} | Senha: {dados['senha']}")
+    pdf.ln(5)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(200, 10, "2. Regras e Observações", ln=True)
+    pdf.set_font("Arial", "", 10)
+    pdf.multi_cell(0, 6, dados['observacoes'])
     return pdf.output(dest='S').encode('latin-1')
 
 # --- INTERFACE STREAMLIT ---
-st.title("🚀 GABMA - Sistema de Inteligência em Faturamento")
-st.markdown("Importe o manual bruto e gere formulários padronizados em PDF.")
+st.set_page_config(page_title="GABMA System", layout="wide")
+st.title("💼 GABMA - Faturamento Inteligente (JSON DB)")
 
-aba1, aba2 = st.tabs(["📥 Importar Manual", "📝 Gerenciar Convênios"])
+# Carrega dados do GitHub
+dados_atuais, sha_atual = buscar_dados_github()
 
-with aba1:
-    st.header("Upload de Dados")
-    manual_input = st.text_area("Cole aqui o texto do manual de convênios:", height=300)
-    if st.button("Processar Manual"):
-        if manual_input:
-            resultado = extrair_dados_manual(manual_input)
-            st.session_state['lista_convenios'] = resultado
-            st.success(f"Sucesso! {len(resultado)} convênios identificados.")
-        else:
-            st.error("Por favor, cole o texto do manual.")
+menu = st.sidebar.radio("Navegação", ["Gerenciar Convênios", "Importar Novo Manual"])
 
-with aba2:
-    if 'lista_convenios' in st.session_state:
-        lista = st.session_state['lista_convenios']
-        nomes = [c['convenio'] for c in lista]
-        escolha = st.selectbox("Selecione o convênio para editar/gerar PDF:", nomes)
+if menu == "Importar Novo Manual":
+    st.header("📥 Importação em Massa")
+    txt = st.text_area("Cole o texto do manual aqui:", height=300)
+    if st.button("Processar e Salvar no GitHub"):
+        novos = extrair_dados_manual(txt)
+        # Mesclar dados novos com antigos
+        mapa_existente = {c['nome']: c for c in dados_atuais}
+        for n in novos:
+            mapa_existente[n['nome']] = n
         
-        # Filtra o convênio selecionado
-        dados_conv = next(item for item in lista if item["convenio"] == escolha)
-        
-        # Formulário de edição
-        with st.expander(f"Editar Dados de {escolha}", expanded=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                dados_conv['site'] = st.text_input("Site", dados_conv['site'])
-                dados_conv['login'] = st.text_input("Login")
-                dados_conv['senha'] = st.text_input("Senha", type="password")
-            with col2:
-                dados_conv['envio'] = st.text_input("Data de Envio", dados_conv['envio'])
-                dados_conv['validade'] = st.text_input("Validade (Dias)", dados_conv['validade'])
-            
-            dados_conv['texto_completo'] = st.text_area("Observações do Manual", dados_conv['texto_completo'], height=200)
+        if salvar_dados_github(list(mapa_existente.values()), sha_atual):
+            st.success("JSON atualizado com sucesso no repositório!")
+            st.rerun()
 
-        # Botão para gerar PDF
-        pdf_bytes = gerar_pdf(dados_conv)
-        st.download_button(
-            label=f"📥 Baixar PDF - {escolha}",
-            data=pdf_bytes,
-            file_name=f"Faturamento_{escolha}.pdf",
-            mime="application/pdf"
-        )
+elif menu == "Gerenciar Convênios":
+    if not dados_atuais:
+        st.info("Nenhum convênio cadastrado. Vá em 'Importar Novo Manual'.")
     else:
-        st.info("Importe um manual na primeira aba para começar.")
+        nomes = sorted([c['nome'] for c in dados_atuais])
+        escolha = st.selectbox("Selecione o convênio para gerenciar:", nomes)
+        
+        # Busca dados do selecionado
+        idx = next(i for i, c in enumerate(dados_atuais) if c['nome'] == escolha)
+        dados_conv = dados_atuais[idx]
+        
+        with st.form("edicao_form"):
+            col1, col2 = st.columns(2)
+            dados_conv['site'] = col1.text_input("Site", dados_conv['site'])
+            dados_conv['login'] = col1.text_input("Login", dados_conv['login'])
+            dados_conv['senha'] = col1.text_input("Senha", dados_conv['senha'])
+            dados_conv['envio'] = col2.text_input("Data de Envio", dados_conv['envio'])
+            dados_conv['validade'] = col2.text_input("Validade (Dias)", dados_conv['validade'])
+            dados_conv['observacoes'] = st.text_area("Observações", dados_conv['observacoes'], height=200)
+            
+            if st.form_submit_button("Salvar Alterações no GitHub"):
+                if salvar_dados_github(dados_atuais, sha_atual):
+                    st.success("Dados salvos e commitado com sucesso!")
+                    st.rerun()
+        
+        st.divider()
+        st.subheader("Gerar Documentação")
+        pdf_bytes = gerar_pdf(dados_conv)
+        st.download_button(f"📥 Baixar PDF - {escolha}", pdf_bytes, f"Faturamento_{escolha}.pdf", "application/pdf")
