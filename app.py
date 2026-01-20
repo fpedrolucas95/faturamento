@@ -233,26 +233,28 @@ def wrap_text(text, pdf, max_width):
 # ============================================================
 
 def github_get_file():
-    # ... (mantenha o código de conexão anterior)
+    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}?ref={BRANCH}&t={int(time.time())}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     
-    if response.status_code == 200:
-        content = response.json()
-        decoded = base64.b64decode(content["content"]).decode("utf-8")
-        data = json.loads(decoded)
-
-        # 🔥 Migração: Converte IDs para int e garante que todos tenham ID
-        modified = False
-        for i, item in enumerate(data):
-            if "id" not in item or isinstance(item["id"], str):
-                # Se for novo ou se for um UUID antigo (string)
-                item["id"] = i + 1 
-                modified = True
-
-        if modified:
-            github_save_file(data, content["sha"])
-
-        return data, content["sha"]
-
+    try:
+        if response.status_code == 200:
+            content = response.json()
+            decoded = base64.b64decode(content["content"]).decode("utf-8")
+            data = json.loads(decoded)
+    
+            # 🔥 Migração: Converte IDs para int e garante que todos tenham ID
+            modified = False
+            for i, item in enumerate(data):
+                if "id" not in item or isinstance(item["id"], str):
+                    # Se for novo ou se for um UUID antigo (string)
+                    item["id"] = i + 1 
+                    modified = True
+    
+            if modified:
+                github_save_file(data, content["sha"])
+    
+            return data, content["sha"]
+    
         elif response.status_code == 404:
             # Banco ainda não existe
             return [], None
