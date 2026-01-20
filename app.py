@@ -145,7 +145,7 @@ def salvar_dados_github(novos_dados, sha):
     encoded = base64.b64encode(json_string.encode('utf-8')).decode('utf-8')
     
     payload = {
-        "message": "Update GABMA Database",
+        "message": "Update Manual Database",
         "content": encoded,
         "branch": BRANCH
     }
@@ -454,7 +454,7 @@ def gerar_pdf(dados):
 # ============================================================
 #       APP – INÍCIO
 # ============================================================
-st.set_page_config(page_title="GABMA – Sistema Técnico", layout="wide")
+st.set_page_config(page_title="💼 Manual de faturamento", layout="wide")
 
 st.markdown(f"<div class='main-title'>💼 Manual de faturamento</div>", unsafe_allow_html=True)
 
@@ -567,7 +567,7 @@ if menu == "Cadastrar / Editar":
         st.download_button(
             "📥 Baixar PDF do Convênio",
             gerar_pdf(dados_conv),
-            f"GABMA_{escolha}.pdf",
+            f"Manual_{escolha}.pdf",
             "application/pdf"
         )
 
