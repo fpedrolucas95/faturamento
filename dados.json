@@ -11,7 +11,7 @@
         "envio": "Data de envio: 01 ao 05 dia útil",
         "validade": "60",
         "xml": "Sim",
-        "nf": "Sim",
+        "nf": "Não",
         "versao_xml": "4.01.00",
         "fluxo_nf": "Envia NF junto com o lote",
         "config_gerador": "",
