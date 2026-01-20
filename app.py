@@ -5,6 +5,7 @@ import json
 import re
 from fpdf import FPDF
 import unicodedata
+import os
 
 # --- CONFIGURAÇÕES DE ACESSO (Secrets) ---
 try:
@@ -78,36 +79,34 @@ def extrair_dados_manual(texto_manual):
 
 # --- GERADOR DE PDF ---
 def gerar_pdf(dados):
-    # Inicializa o PDF
     pdf = FPDF()
     pdf.add_page()
     
-    # IMPORTANTE: Para evitar o erro de Unicode, usamos a fonte DejaVu que suporta UTF-8
-    # A fpdf2 já traz essas fontes, basta carregar ou usar o fallback
-    pdf.set_fallback_fonts(["DejaVuSans", "Arial"]) 
+    # Verifica se o arquivo de fonte existe na pasta para evitar erros
+    fonte_path = "DejaVuSans.ttf"
     
-    # Se você preferir usar a fonte padrão sem carregar arquivos externos:
-    # Vamos tratar a string para garantir que ela seja compatível com fontes comuns
-    def tratar_texto_unicode(texto):
-        if not texto: return ""
-        # Normaliza o texto (troca caracteres especiais por similares simples)
-        # Ex: Troca aspas curvas por retas, traços longos por hífens
-        texto = texto.replace('\u2013', '-').replace('\u2014', '-').replace('\u201c', '"').replace('\u201d', '"')
-        # Remove caracteres que não podem ser representados em latin-1 (solução de segurança)
-        return unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode('ascii')
+    if os.path.exists(fonte_path):
+        # Adiciona a fonte que suporta UTF-8 nativamente
+        pdf.add_font("DejaVu", "", fonte_path)
+        pdf.set_font("DejaVu", "", 14)
+        fonte_principal = "DejaVu"
+    else:
+        # Fallback caso você esqueça de subir a fonte no GitHub
+        pdf.set_font("Helvetica", "B", 14)
+        fonte_principal = "Helvetica"
+        st.warning("Arquivo DejaVuSans.ttf não encontrado. Acentos podem falhar.")
 
-    # Cabeçalho
-    pdf.set_font("Helvetica", "B", 16)
-    nome_limpo = tratar_texto_unicode(dados['nome'])
-    pdf.cell(0, 10, f"Formulário de Faturamento: {nome_limpo}", new_x="LMARGIN", new_y="NEXT", align='C')
+    # Título
+    pdf.set_font(fonte_principal, "B" if fonte_principal == "Helvetica" else "", 16)
+    pdf.cell(0, 10, f"Formulário de Faturamento: {dados['nome']}", new_x="LMARGIN", new_y="NEXT", align='C')
     pdf.ln(10)
     
     # Seção 1: Dados de Acesso
-    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_font(fonte_principal, "B" if fonte_principal == "Helvetica" else "", 12)
     pdf.cell(0, 10, "1. Acesso e Portal", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 10)
     
-    info_acesso = tratar_texto_unicode(
+    pdf.set_font(fonte_principal, "", 10)
+    info_acesso = (
         f"Site: {dados['site']}\n"
         f"Login: {dados['login']} | Senha: {dados['senha']}\n"
         f"XML: {dados['xml']} | Envio: {dados['envio']}\n"
@@ -117,15 +116,13 @@ def gerar_pdf(dados):
     pdf.ln(5)
     
     # Seção 2: Regras e Observações
-    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_font(fonte_principal, "B" if fonte_principal == "Helvetica" else "", 12)
     pdf.cell(0, 10, "2. Regras Extraídas do Manual", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 10)
     
-    # Tratamos o bloco de observações que é o mais problemático
-    obs_texto = tratar_texto_unicode(dados['observacoes'])
-    pdf.multi_cell(0, 6, obs_texto)
+    pdf.set_font(fonte_principal, "", 10)
+    # No fpdf2 com fonte TTF, o UTF-8 funciona direto!
+    pdf.multi_cell(0, 6, dados['observacoes'])
     
-    # Retorna os bytes do PDF
     return pdf.output()
 
 # --- INTERFACE STREAMLIT ---
