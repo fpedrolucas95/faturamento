@@ -790,18 +790,30 @@ def page_cadastro(dados_atuais, sha_atual):
 # 10. PÁGINA — CONSULTA DE CONVÊNIOS
 # ============================================================
 
+
 def page_consulta(dados_atuais):
 
     if not dados_atuais:
         st.info("Nenhum convênio cadastrado.")
         return
 
-    # Seleção segura por ID
-    opcoes = sorted([f"{c['id']} — {safe_get(c, 'nome')}" for c in dados_atuais])
+    # Lista segura: caso falte ID
+    opcoes = sorted([
+        f"{safe_get(c,'id')} || {safe_get(c,'nome')}"
+        for c in dados_atuais
+    ])
+
     escolha = st.selectbox("Selecione o convênio:", opcoes)
 
-    conv_id = escolha.split(" — ")[0]
-    dados = next(c for c in dados_atuais if c["id"] == conv_id)
+    # Extrai ID de forma segura
+    conv_id = escolha.split(" || ")[0]
+
+    # Evita StopIteration
+    dados = next((c for c in dados_atuais if safe_get(c,"id") == conv_id), None)
+
+    if not dados:
+        st.error("Erro: convênio não encontrado no banco.")
+        return
 
     # Título grande
     ui_section_title(safe_get(dados, "nome"))
@@ -837,6 +849,7 @@ def page_consulta(dados_atuais):
     ui_block_info("⚠️ Observações Críticas", safe_get(dados, "observacoes"))
 
     st.caption("Manual de Faturamento — Visualização Premium")
+
 
 
 # ============================================================
