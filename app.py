@@ -32,6 +32,8 @@ except Exception:
     st.error("⚠️ Configure os Secrets: GITHUB_TOKEN, REPO_OWNER e REPO_NAME.")
     st.stop()
 
+FILE_PATH = "dados.json"
+BRANCH = "main"
 
 db = GitHubJSON(
     token=GITHUB_TOKEN,
@@ -41,9 +43,6 @@ db = GitHubJSON(
     branch=BRANCH
 )
 
-
-FILE_PATH = "dados.json"
-BRANCH = "main"
 
 # ------------------------------------------------------------
 # 3. CONSTANTES / PALETA
