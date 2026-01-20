@@ -11,6 +11,9 @@ import json
 import os
 import pandas as pd
 from fpdf import FPDF
+import unicodedata
+import re
+
 
 # -----------------------------------------
 #     CONFIGURAÇÕES DE ACESSO (SECRETS)
@@ -99,6 +102,32 @@ def buscar_dados_github():
         return json.loads(decoded), content['sha']
     else:
         return [], None
+
+
+def sanitize_text(text):
+    """
+    Previne erros de largura do FPDF removendo caracteres ilegais,
+    espaços invisíveis, unicode non-renderable e normalizando tudo.
+    """
+    if text is None:
+        return ""
+
+    # Converter para string
+    text = str(text)
+
+    # Normaliza Unicode (remove marcas combining, emojis inválidos, controls)
+    text = unicodedata.normalize("NFKD", text)
+
+    # Remove caracteres que o FPDF não sabe medir (zero-width, escape invisível)
+    text = re.sub(r"[\u200B-\u200F\u202A-\u202E\u2060-\u206F]", "", text)
+
+    # Remove caracteres de controle ASCII (exceto \n)
+    text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", text)
+
+    # Remove quebras estranhas
+    text = text.replace("\r", "")
+
+    return text
 
 
 def salvar_dados_github(novos_dados, sha):
@@ -302,7 +331,7 @@ def gerar_pdf(dados):
     pdf.ln(2)
     # multi_cell evita cortes e respeita margens
     pdf.multi_cell(0, 7, f"Empresa: {str(dados.get('empresa','N/A'))} | Código: {str(dados.get('codigo','N/A'))}")
-    pdf.multi_cell(0, 7, f"Portal: {str(dados.get('site',''))}")
+    pdf.multi_cell(0, 7, sanitize_text(f"Portal: {dados.get('site','')}"))
     pdf.multi_cell(0, 7, f"Login: {str(dados.get('login',''))}  |  Senha: {str(dados.get('senha',''))}")
     pdf.multi_cell(0, 7, f"Sistema: {str(dados.get('sistema_utilizado','N/A'))} | Retorno: {str(dados.get('prazo_retorno','N/A'))}")
     pdf.ln(5)
@@ -326,7 +355,7 @@ def gerar_pdf(dados):
     draw_row(
         col_w,
         [
-            str(dados.get("envio","")),
+            sanitize_text(dados.get("envio","")),
             f"{str(dados.get('validade',''))} dias",
             f"{str(dados.get('xml',''))} / {str(dados.get('versao_xml','-'))}",
             str(dados.get("nf","")),
