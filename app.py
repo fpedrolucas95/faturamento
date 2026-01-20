@@ -141,9 +141,23 @@ st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
 # 5. FUNÇÕES UTILITÁRIAS
 # ============================================================
 
-def generate_id():
-    """Gera ID único padrão UUID4 para cada convênio."""
-    return str(uuid.uuid4())
+def generate_id(dados_atuais):
+    """
+    Gera um ID decimal sequencial baseado no maior ID existente.
+    Se a lista estiver vazia, começa em 1.
+    """
+    if not dados_atuais:
+        return 1
+    
+    ids = []
+    for item in dados_atuais:
+        try:
+            # Tenta converter o ID existente para int (caso ainda existam UUIDs antigos)
+            ids.append(int(item.get("id", 0)))
+        except ValueError:
+            continue
+            
+    return max(ids) + 1 if ids else 1
 
 
 def sanitize_text(text: str) -> str:
@@ -219,41 +233,25 @@ def wrap_text(text, pdf, max_width):
 # ============================================================
 
 def github_get_file():
-    """
-    Lê o arquivo JSON do GitHub SEM CACHE e garante que todos os convênios
-    possuam um ID único permanente, adicionando quando necessário.
-    """
-    url = (
-        f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/"
-        f"{FILE_PATH}?ref={BRANCH}&t={int(time.time())}"
-    )
+    # ... (mantenha o código de conexão anterior)
+    
+    if response.status_code == 200:
+        content = response.json()
+        decoded = base64.b64decode(content["content"]).decode("utf-8")
+        data = json.loads(decoded)
 
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
+        # 🔥 Migração: Converte IDs para int e garante que todos tenham ID
+        modified = False
+        for i, item in enumerate(data):
+            if "id" not in item or isinstance(item["id"], str):
+                # Se for novo ou se for um UUID antigo (string)
+                item["id"] = i + 1 
+                modified = True
 
-    try:
-        response = requests.get(url, headers=headers)
+        if modified:
+            github_save_file(data, content["sha"])
 
-        if response.status_code == 200:
-            content = response.json()
-
-            decoded = base64.b64decode(content["content"]).decode("utf-8")
-            data = json.loads(decoded)
-
-            # 🔥 Verifica se todos têm ID — compatível com versões antigas
-            modified = False
-            for item in data:
-                if "id" not in item:
-                    item["id"] = generate_id()
-                    modified = True
-
-            # Se IDs foram criados agora, salva imediatamente
-            if modified:
-                github_save_file(data, content["sha"])
-
-            return data, content["sha"]
+        return data, content["sha"]
 
         elif response.status_code == 404:
             # Banco ainda não existe
@@ -746,6 +744,20 @@ def page_cadastro(dados_atuais, sha_atual):
                 "doc_digitalizacao": doc_digitalizacao,
                 "observacoes": observacoes,
             }
+            
+            if conv_id is None:
+                # 🔥 Usa a nova função sequencial
+                novo_registro["id"] = generate_id(dados_atuais)
+                dados_atuais.append(novo_registro)
+            else:
+                # Mantém o ID decimal como inteiro
+                novo_registro["id"] = int(conv_id)
+                idx = next(i for i, c in enumerate(dados_atuais) if int(c["id"]) == int(conv_id))
+                dados_atuais[idx] = novo_registro
+
+            if github_save_file(dados_atuais, sha_atual):
+                st.success(f"✔ Convênio {novo_registro['id']} salvo com sucesso!")
+                st.rerun()
 
             # 🔥 Novo convênio → gera ID
             if conv_id is None:
