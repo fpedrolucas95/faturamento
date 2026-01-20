@@ -851,7 +851,7 @@ def main():
     # ROTEAMENTO DAS PÁGINAS
     # --------------------------------------------------------
     if menu == "Cadastrar / Editar":
-        page_cadastro(dados_atuais)
+        page_cadastro()
 
     elif menu == "Consulta de Convênios":
         page_consulta(dados_atuais)
