@@ -256,27 +256,22 @@ def wrap_text(text, pdf, max_width):
 # 7. GERAÇÃO DO PDF — VERSÃO ORGANIZADA, PROFISSIONAL E ESTÁVEL
 # ============================================================
 
+
 def gerar_pdf(dados):
     """
-    Gera PDF idêntico ao modelo referência:
-    - Cabeçalho barra azul: 'GUIA TÉCNICA: <NOME> - <EMPRESA>'
-    - Seção 1: DADOS DE IDENTIFICAÇÃO E ACESSO (duas colunas com rótulos)
-    - Seção 2: CRONOGRAMA E REGRAS TÉCNICAS (tabela com 5 colunas)
-    - OBSERVAÇÕES CRÍTICAS (único bloco longo, em caixa com borda)
+    Layout idêntico ao modelo: barra azul de título, Seção 1 (duas colunas),
+    Seção 2 (tabela 5 colunas) e 'OBSERVAÇÕES CRÍTICAS' com caixa multipágina.
     """
 
-    # --- Setup inicial ---
     pdf = FPDF(orientation="P", unit="mm", format="A4")
     pdf.set_margins(15, 12, 15)
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    # Cores (RGB)
-    BLUE = (31, 73, 125)           # barra título
-    GREY_BAR = (230, 230, 230)     # barras de seção
+    # --- Paleta ---
+    BLUE = (31, 73, 125)
+    GREY_BAR = (230, 230, 230)
     TEXT = (0, 0, 0)
-
-    # Larguras úteis
     CONTENT_W = pdf.w - pdf.l_margin - pdf.r_margin
 
     # --- Fontes ---
@@ -299,8 +294,175 @@ def gerar_pdf(dados):
         except:
             pdf.set_font("Helvetica", style, size)
 
+    # ---------- Helpers de layout ----------
+    def bar_title(texto, top_margin=2, height=8):
+        pdf.ln(top_margin)
+        pdf.set_fill_color(*GREY_BAR)
+        set_font(12, True)
+        pdf.cell(0, height, f" {sanitize_text(texto).upper()}", ln=1, fill=True)
+        pdf.ln(1)
+
+    def label_value_heights(col_x, base_y, label, value, label_w, col_w, line_h=7, val_size=10):
+        """
+        Mede e desenha UMA linha de 'Label: Valor' (quebra valor em múltiplas linhas).
+        Retorna a altura total usada. Garante que não ultrapasse a página.
+        """
+        label = sanitize_text(label)
+        value = sanitize_text(value)
+        usable = col_w - label_w
+
+        # calcula linhas do valor
+        set_font(val_size, False)
+        lines = wrap_text(value, pdf, max(1, usable))
+        needed_h = max(1, len(lines)) * line_h
+
+        # quebra de página preventiva
+        if base_y + needed_h > pdf.page_break_trigger:
+            pdf.add_page()
+            base_y = pdf.get_y()
+
+        # desenha
+        set_font(10, True)
+        pdf.set_xy(col_x, base_y)
+        pdf.cell(label_w, line_h, f"{label}:")
+        set_font(val_size, False)
+
+        pdf.set_xy(col_x + label_w, base_y)
+        pdf.cell(usable, line_h, lines[0])
+        for i in range(1, len(lines)):
+            pdf.set_xy(col_x + label_w, base_y + i * line_h)
+            pdf.cell(usable, line_h, lines[i])
+
+        return needed_h
+
+    def two_column_info(pares_esq, pares_dir, gap=10, label_w=28, line_h=7):
+        col_w = (CONTENT_W - gap) / 2
+        xL = pdf.l_margin
+        xR = pdf.l_margin + col_w + gap
+        y = pdf.get_y()
+
+        max_rows = max(len(pares_esq), len(pares_dir))
+        for i in range(max_rows):
+            lblL, valL = pares_esq[i] if i < len(pares_esq) else ("", "")
+            lblR, valR = pares_dir[i] if i < len(pares_dir) else ("", "")
+
+            # mede cada lado (cada um pode pedir altura diferente)
+            hL = label_value_heights(xL, y, lblL, valL, label_w, col_w, line_h=line_h)
+            hR = label_value_heights(xR, y, lblR, valR, label_w, col_w, line_h=line_h)
+            y = max(pdf.get_y(), y + max(hL, hR))
+
+        pdf.set_y(y)  # cursor final
+
+    def table(headers, rows, widths, header_h=8, cell_h=7):
+        # Cabeçalho
+        set_font(10, True)
+        x0 = pdf.get_x()
+        y0 = pdf.get_y()
+        for i, head in enumerate(headers):
+            pdf.set_xy(x0 + sum(widths[:i]), y0)
+            pdf.cell(widths[i], header_h, sanitize_text(head), border=1, align="C")
+        pdf.ln(header_h)
+
+        # Linhas
+        set_font(10, False)
+        for row in rows:
+            wrapped_cols = []
+            max_lines = 1
+            for i, val in enumerate(row):
+                val = sanitize_text(val)
+                lines = wrap_text(val, pdf, max(1, widths[i]-2))
+                wrapped_cols.append(lines)
+                max_lines = max(max_lines, len(lines))
+            row_h = max_lines * cell_h
+
+            # quebra de página com redesenho de cabeçalho
+            if pdf.get_y() + row_h > pdf.page_break_trigger:
+                pdf.add_page()
+                set_font(10, True)
+                xh = pdf.get_x()
+                yh = pdf.get_y()
+                for i, head in enumerate(headers):
+                    pdf.set_xy(xh + sum(widths[:i]), yh)
+                    pdf.cell(widths[i], header_h, sanitize_text(head), border=1, align="C")
+                pdf.ln(header_h)
+                set_font(10, False)
+
+            x_row = pdf.get_x()
+            y_row = pdf.get_y()
+            for i, lines in enumerate(wrapped_cols):
+                x_cell = x_row + sum(widths[:i])
+                pdf.rect(x_cell, y_row, widths[i], row_h)
+                for j, ln in enumerate(lines):
+                    pdf.set_xy(x_cell + 1, y_row + j * cell_h)
+                    pdf.cell(widths[i]-2, cell_h, ln)
+            pdf.ln(row_h)
+
+    def draw_multipage_box(text, left_margin, width, line_h=6.5, padding=1.5):
+        """
+        Desenha um bloco de texto com borda que pode ocupar várias páginas.
+        Mantém as bordas corretamente em cada página.
+        """
+        text = sanitize_text(text or "")
+        if text == "":
+            # desenha uma caixa vazia com altura mínima
+            y = pdf.get_y()
+            min_h = line_h + 2 * padding
+            if y + min_h > pdf.page_break_trigger:
+                pdf.add_page()
+                y = pdf.get_y()
+            pdf.rect(left_margin, y, width, min_h)
+            pdf.ln(min_h)
+            return
+
+        # Constrói linhas a partir da largura disponível (considerando padding)
+        usable_w = width - 2 * padding
+        set_font(10, False)
+        lines = wrap_text(text, pdf, usable_w)
+
+        # Fluxo de paginação
+        i = 0
+        while i < len(lines):
+            y_top = pdf.get_y()
+            # espaço útil na página (até o gatilho de quebra)
+            space = pdf.page_break_trigger - y_top
+            # altura disponível para conteúdo do box nesta página (tirando bordas/padding)
+            # vamos reservar 2*padding + 1px extra para borda visual
+            avail_h = max(0.0, space - 2 * padding - 0.5)
+
+            # quantas linhas cabem nesta página?
+            lines_per_page = int(avail_h // line_h) if avail_h > 0 else 0
+            if lines_per_page <= 0:
+                pdf.add_page()
+                continue
+
+            # fatia de linhas a renderizar nesta página
+            end = min(len(lines), i + lines_per_page)
+            slice_lines = lines[i:end]
+
+            # altura real da caixa nesta página
+            box_h = 2 * padding + len(slice_lines) * line_h
+
+            # desenha borda da caixa
+            pdf.rect(left_margin, y_top, width, box_h)
+
+            # desenha as linhas com padding
+            x_text = left_margin + padding
+            y_text = y_top + padding
+            for ln in slice_lines:
+                pdf.set_xy(x_text, y_text)
+                pdf.cell(usable_w, line_h, ln)
+                y_text += line_h
+
+            # atualiza ponteiros
+            pdf.set_y(y_top + box_h)
+            i = end
+
+            # se ainda restam linhas, começamos nova página automaticamente
+            if i < len(lines) and pdf.get_y() + line_h > pdf.page_break_trigger:
+                pdf.add_page()
+
     # --------------------------
-    # 1) CABEÇALHO (barra azul)
+    # Título (barra azul)
     # --------------------------
     titulo_nome = sanitize_text(safe_get(dados, "nome")).upper()
     titulo_emp  = sanitize_text(safe_get(dados, "empresa")).upper()
@@ -313,125 +475,9 @@ def gerar_pdf(dados):
     pdf.ln(2)
     pdf.set_text_color(*TEXT)
 
-    # ---------------------------------------------------
-    # Funções auxiliares de layout (rótulos/valores, etc)
-    # ---------------------------------------------------
-    def bar_title(texto, top_margin=2, height=8):
-        """Barra de seção cinza com título em negrito."""
-        pdf.ln(top_margin)
-        pdf.set_fill_color(*GREY_BAR)
-        set_font(12, True)
-        pdf.cell(0, height, f" {sanitize_text(texto).upper()}", ln=1, fill=True)
-        pdf.ln(1)
-
-    def label_value_line(x, y, label, value, label_w, col_w, line_h=7, val_size=10):
-        """
-        Uma linha "Label: Valor" dentro de uma coluna.
-        Quebra valor em múltiplas linhas quando necessário e retorna a altura usada.
-        """
-        label = sanitize_text(label)
-        value = sanitize_text(value)
-
-        # Calcula linhas do valor com base na largura disponível
-        pdf.set_xy(x, y)
-        set_font(10, True)
-        pdf.cell(label_w, line_h, f"{label}:")
-
-        usable = col_w - label_w
-        set_font(val_size, False)
-        lines = wrap_text(value, pdf, usable)
-        # Primeira linha
-        pdf.set_xy(x + label_w, y)
-        pdf.cell(usable, line_h, lines[0])
-        # Demais linhas abaixo
-        for i in range(1, len(lines)):
-            pdf.set_xy(x + label_w, y + i * line_h)
-            pdf.cell(usable, line_h, lines[i])
-
-        return max(1, len(lines)) * line_h
-
-    def two_column_info(pares_esq, pares_dir, gap=8, label_w=28, line_h=7):
-        """
-        Renderiza a grade da seção 1 em duas colunas,
-        cada coluna com várias linhas de 'Label: Valor'.
-        Ajusta dinamicamente a altura por linha para alinhar as duas colunas.
-        """
-        col_w = (CONTENT_W - gap) / 2
-        x_left = pdf.l_margin
-        x_right = pdf.l_margin + col_w + gap
-        y = pdf.get_y()
-
-        # Para alinhar linhas, processamos linha a linha (índice)
-        max_rows = max(len(pares_esq), len(pares_dir))
-        for i in range(max_rows):
-            lblL, valL = pares_esq[i] if i < len(pares_esq) else ("", "")
-            lblR, valR = pares_dir[i] if i < len(pares_dir) else ("", "")
-
-            # mede a altura que cada lado precisa
-            h_left = label_value_line(x_left, y, lblL, valL, label_w, col_w, line_h=line_h)
-            h_right = label_value_line(x_right, y, lblR, valR, label_w, col_w, line_h=line_h)
-
-            # avança para a próxima linha baseando-se na maior altura
-            y += max(h_left, h_right)
-
-        pdf.set_y(y)  # atualiza o cursor vertical ao final
-
-    def table(headers, rows, widths, header_h=8, cell_h=7):
-        """Tabela com cabeçalho cinza e células com múltiplas linhas e borda."""
-        # Cabeçalho
-        set_font(10, True)
-        pdf.set_fill_color(246, 246, 246)
-        x_start = pdf.get_x()
-        y_start = pdf.get_y()
-
-        # Desenha cabeçalho
-        for i, head in enumerate(headers):
-            pdf.set_xy(x_start + sum(widths[:i]), y_start)
-            pdf.cell(widths[i], header_h, sanitize_text(head), border=1, align="C")
-        pdf.ln(header_h)
-
-        # Linhas
-        set_font(10, False)
-        for row in rows:
-            # Pré-processa para obter número de linhas de cada coluna
-            wrapped_cols = []
-            max_lines = 1
-            for i, val in enumerate(row):
-                val = sanitize_text(val)
-                lines = wrap_text(val, pdf, max(1, widths[i]-2))
-                wrapped_cols.append(lines)
-                max_lines = max(max_lines, len(lines))
-            row_height = max_lines * cell_h
-
-            # Quebra de página se necessário
-            if pdf.get_y() + row_height > pdf.page_break_trigger:
-                pdf.add_page()
-
-                # redesenha cabeçalho na nova página
-                set_font(10, True)
-                pdf.set_fill_color(246, 246, 246)
-                x_hdr = pdf.get_x()
-                y_hdr = pdf.get_y()
-                for i, head in enumerate(headers):
-                    pdf.set_xy(x_hdr + sum(widths[:i]), y_hdr)
-                    pdf.cell(widths[i], header_h, sanitize_text(head), border=1, align="C")
-                pdf.ln(header_h)
-                set_font(10, False)
-
-            # Desenha a linha
-            x_row = pdf.get_x()
-            y_row = pdf.get_y()
-            for i, lines in enumerate(wrapped_cols):
-                x_cell = x_row + sum(widths[:i])
-                pdf.rect(x_cell, y_row, widths[i], row_height)  # borda da célula
-                for j, ln in enumerate(lines):
-                    pdf.set_xy(x_cell + 1, y_row + j * cell_h)
-                    pdf.cell(widths[i]-2, cell_h, ln)
-            pdf.ln(row_height)
-
-    # -------------------------------------
-    # Seção 1: Dados de identificação/acesso
-    # -------------------------------------
+    # --------------------------
+    # Seção 1
+    # --------------------------
     bar_title("1. Dados de Identificação e Acesso")
 
     pares_esq = [
@@ -448,18 +494,16 @@ def gerar_pdf(dados):
     two_column_info(pares_esq, pares_dir, gap=10, label_w=28, line_h=7)
     pdf.ln(2)
 
-    # -------------------------------------
-    # Seção 2: Cronograma e Regras Técnicas
-    # -------------------------------------
+    # --------------------------
+    # Seção 2 — Tabela
+    # --------------------------
     bar_title("2. Cronograma e Regras Técnicas")
 
-    # Definição das colunas (proporcionais ao modelo)
-    # Ajuste fino para ficar visualmente idêntico ao seu exemplo
-    w1 = 52   # Prazo Envio
-    w2 = 35   # Validade Guia
-    w3 = 35   # XML / Versão
-    w4 = 30   # Nota Fiscal
-    w5 = CONTENT_W - (w1 + w2 + w3 + w4)  # Fluxo NF ocupa o restante
+    w1 = 52
+    w2 = 35
+    w3 = 35
+    w4 = 30
+    w5 = CONTENT_W - (w1 + w2 + w3 + w4)
     widths = [w1, w2, w3, w4, w5]
 
     headers = ["Prazo Envio", "Validade Guia", "XML / Versão", "Nota Fiscal", "Fluxo NF"]
@@ -475,45 +519,17 @@ def gerar_pdf(dados):
         safe_get(dados, "nf"),
         safe_get(dados, "fluxo_nf"),
     ]
-
     table(headers, [row], widths, header_h=8, cell_h=7)
     pdf.ln(2)
 
-    # -------------------------------------
-    # Observações Críticas (único bloco final)
-    # -------------------------------------
+    # --------------------------
+    # Observações Críticas — multipágina
+    # --------------------------
     bar_title("Observações Críticas")
+    obs_text = safe_get(dados, "observacoes")
+    draw_multipage_box(obs_text, left_margin=pdf.l_margin, width=CONTENT_W, line_h=6.5, padding=1.8)
 
-    obs = sanitize_text(safe_get(dados, "observacoes"))
-    if not obs:
-        obs = ""  # mantém a caixa em branco se desejar ocultar, basta condicionar abaixo
-
-    # Caixa com borda ocupando a largura total
-    set_font(10, False)
-    x = pdf.l_margin
-    y = pdf.get_y()
-    w = CONTENT_W
-    line_h = 6.5
-
-    # Quebra em linhas
-    lines = wrap_text(obs, pdf, w - 3) if obs else [""]  # mantém altura visual
-    box_h = max(1, len(lines)) * line_h + 3  # margenzinha interna
-
-    # Quebra de página se necessário
-    if pdf.get_y() + box_h > pdf.page_break_trigger:
-        pdf.add_page()
-        y = pdf.get_y()
-
-    # Borda + texto
-    pdf.rect(x, y, w, box_h)
-    pdf.set_xy(x + 1.5, y + 1.5)
-    for i, ln in enumerate(lines):
-        pdf.set_xy(x + 1.5, y + 1.5 + i * line_h)
-        pdf.cell(w - 3, line_h, ln)
-
-    # (Sem rodapé para ficar fiel ao modelo exibido)
     return pdf.output(dest="S").encode("latin-1")
-
 
 
 # ============================================================
