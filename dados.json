@@ -137,14 +137,14 @@
         "login": "",
         "senha": "",
         "prazo_retorno": "",
-        "envio": "Primeiro dia útil do mês",
+        "envio": "Primeiro dia útil do mês",
         "validade": "90",
-        "nf": "Sim",
-        "fluxo_nf": "Envia NF junto com o lote",
         "xml": "Não",
+        "nf": "Sim",
         "versao_xml": "Não Envia",
+        "fluxo_nf": "Envia NF junto com o lote",
         "config_gerador": "",
         "doc_digitalizacao": "",
-        "observacoes": "Não passa XML. Só faz o fechamento no Fhasso para tirar a carta de aceite. Data de envio: Primeiro dia útil do mês, vai com NF e pelo Chaguinhas. Validade das guias: 90 dias."
+        "observacoes": "Não passa XML. Só faz o fechamento no Fhasso para tirar a carta de aceite. Data de envio: Primeiro dia útil do mês, vai com NF e pelo Chaguinhas. Validade das guias: 90 dias."
     }
 ]
