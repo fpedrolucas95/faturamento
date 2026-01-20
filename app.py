@@ -636,34 +636,35 @@ def page_cadastro(dados_atuais):
 
         submit = st.form_submit_button("💾 Salvar Dados")
 
+       
         if submit:
-            novo_registro = {
-                "nome": nome, "codigo": codigo, "empresa": empresa,
-                "sistema_utilizado": sistema, "site": site, "login": login,
-                "senha": senha, "prazo_retorno": retorno, "envio": envio,
-                "validade": validade, "xml": xml, "nf": nf,
-                "versao_xml": versao_xml, "fluxo_nf": fluxo_nf,
-                "config_gerador": config_gerador, "doc_digitalizacao": doc_digitalizacao,
-                "observacoes": observacoes,
-            }
-
-            
-           
-        if conv_id is None:
-            novo_registro["id"] = generate_id(dados_atuais)
-            dados_atuais.append(novo_registro)
-        else:
-            novo_registro["id"] = int(conv_id)
-            for i, c in enumerate(dados_atuais):
-                if str(c.get("id")) == str(conv_id):
-                    dados_atuais[i] = novo_registro
-                    break
+                novo_registro = {
+                    "nome": nome, "codigo": codigo, "empresa": empresa,
+                    "sistema_utilizado": sistema, "site": site, "login": login,
+                    "senha": senha, "prazo_retorno": retorno, "envio": envio,
+                    "validade": validade, "xml": xml, "nf": nf,
+                    "versao_xml": versao_xml, "fluxo_nf": fluxo_nf,
+                    "config_gerador": config_gerador, "doc_digitalizacao": doc_digitalizacao,
+                    "observacoes": observacoes,
+                }
         
-        # --- SALVAR AQUI (para novo OU editar) ---
-        if db.save(dados_atuais):
-            st.success(f"✔ Convênio {novo_registro['id']} salvo com sucesso!")
-            time.sleep(0.4)
-            st.rerun()
+                # --- Lógica de novo ou edição ---
+                if conv_id is None:
+                    novo_registro["id"] = generate_id(dados_atuais)
+                    dados_atuais.append(novo_registro)
+                else:
+                    novo_registro["id"] = int(conv_id)
+                    for i, c in enumerate(dados_atuais):
+                        if str(c.get("id")) == str(conv_id):
+                            dados_atuais[i] = novo_registro
+                            break
+        
+                # --- SALVAR (para novo OU editar) ---
+                if db.save(dados_atuais):
+                    st.success(f"✔ Convênio {novo_registro['id']} salvo com sucesso!")
+                    time.sleep(0.4)
+                    st.rerun()
+
 
 
 
