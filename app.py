@@ -257,111 +257,80 @@ def wrap_text(text, pdf, max_width):
 # ============================================================
 
 
+
 def gerar_pdf(dados):
     """
-    Gera PDF técnico detalhado do convênio utilizando FPDF.
-    Inclui seções, tabelas, quebras inteligentes e layout corporativo.
+    Gera PDF técnico detalhado do convênio no MODELO B (duas colunas simétricas),
+    mantendo exatamente o estilo original, com alinhamento e formatação corrigidos.
     """
 
     pdf = FPDF()
     pdf.set_margins(10, 10, 10)
-    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_auto_page_break(auto=True, margin=12)
     pdf.add_page()
 
     # --------------------------------------------------------
     # CONFIGURAÇÃO DE FONTES
     # --------------------------------------------------------
     fonte_normal = "DejaVuSans.ttf"
-    fonte_bold = "DejaVuSans-Bold.ttf"
+    fonte_bold   = "DejaVuSans-Bold.ttf"
 
-    has_normal = os.path.exists(fonte_normal)
-    has_bold = os.path.exists(fonte_bold)
+    global FONT
 
-    if has_normal:
+    if os.path.exists(fonte_normal):
         pdf.add_font("DejaVu", "", fonte_normal, uni=True)
-        if has_bold:
+        if os.path.exists(fonte_bold):
             pdf.add_font("DejaVu", "B", fonte_bold, uni=True)
         FONT = "DejaVu"
     else:
         FONT = "Helvetica"
 
-    def set_font(size=10, bold=False):
-        style = "B" if bold else ""
-        try:
-            pdf.set_font(FONT, style, size)
-        except:
-            pdf.set_font("Helvetica", style, size)
-
-    CONTENT_WIDTH = pdf.w - pdf.l_margin - pdf.r_margin
+    CONTENT = pdf.w - pdf.l_margin - pdf.r_margin
 
     # --------------------------------------------------------
-    # FUNÇÕES AUXILIARES DO PDF
+    # FUNÇÕES AUXILIARES CORRIGIDAS
     # --------------------------------------------------------
 
-    def cell_label_value(label, value, label_w=40, h=7):
-        """Linha 'Label: Valor' com quebra automática."""
+    def cell_label_value(label, value, label_w, col_w, h=6):
+        """Linha simples com label + valor, com quebra correta."""
         label = sanitize_text(label)
         value = sanitize_text(value)
 
-        set_font(9, True)
+        pdf.set_font(FONT, "B", 10)
         pdf.cell(label_w, h, f"{label}:")
-        set_font(9, False)
 
-        usable = CONTENT_WIDTH - label_w
+        pdf.set_font(FONT, "", 10)
+        text_w = col_w - label_w - 2
 
-        if pdf.get_string_width(value) <= usable:
-            pdf.cell(usable, h, value, ln=1)
+        if pdf.get_string_width(value) <= text_w:
+            pdf.cell(text_w, h, value, ln=1)
         else:
-            lines = wrap_text(value, pdf, usable)
-            pdf.cell(usable, h, lines[0], ln=1)
-            for ln_text in lines[1:]:
+            lines = wrap_text(value, pdf, text_w)
+            pdf.cell(text_w, h, lines[0], ln=1)
+            for ln in lines[1:]:
                 pdf.set_x(pdf.l_margin + label_w)
-                pdf.cell(usable, h, ln_text, ln=1)
+                pdf.cell(text_w, h, ln, ln=1)
 
-    def two_cols(label1, val1, label2, val2, label_w=38, gap=6, h=7):
-        """Duas colunas lado a lado com quebra automática."""
-        col_width = (CONTENT_WIDTH - gap) / 2
+    def two_cols_fixed(label1, val1, label2, val2, h=6):
+        """Duas colunas simétricas com mesma altura."""
+        col_w = (CONTENT - 5) / 2
 
-        val1 = sanitize_text(val1)
-        val2 = sanitize_text(val2)
-
-        lines_left = wrap_text(val1, pdf, col_width - label_w)
-        lines_right = wrap_text(val2, pdf, col_width - label_w)
-        max_lines = max(len(lines_left), len(lines_right))
-        row_h = max_lines * h
-
-        if pdf.get_y() + row_h > pdf.page_break_trigger:
-            pdf.add_page()
-
+        x_left = pdf.get_x()
         y_start = pdf.get_y()
 
         # Coluna esquerda
-        set_font(9, True)
-        pdf.set_xy(pdf.l_margin, y_start)
-        pdf.cell(label_w, h, f"{label1}:")
-        set_font(9, False)
-        x_start_left = pdf.get_x()
-        for i, txt in enumerate(lines_left):
-            pdf.set_xy(x_start_left, y_start + i * h)
-            pdf.cell(col_width - label_w, h, txt)
+        cell_label_value(label1, val1, 32, col_w, h)
+        h_left = pdf.get_y() - y_start
 
         # Coluna direita
-        x_right = pdf.l_margin + col_width + gap
-        set_font(9, True)
-        pdf.set_xy(x_right, y_start)
-        pdf.cell(label_w, h, f"{label2}:")
-        set_font(9, False)
-        x_start_right = pdf.get_x()
-        for i, txt in enumerate(lines_right):
-            pdf.set_xy(x_start_right, y_start + i * h)
-            pdf.cell(col_width - label_w, h, txt)
+        pdf.set_xy(x_left + col_w + 5, y_start)
+        cell_label_value(label2, val2, 32, col_w, h)
+        h_right = pdf.get_y() - y_start
 
-        pdf.set_y(y_start + row_h)
+        pdf.set_y(y_start + max(h_left, h_right))
 
-    def table_row(widths, values, aligns=None, h=6):
-        """Linha de tabela com bordas, múltiplas linhas e altura uniforme."""
-        aligns = aligns or ["L"] * len(widths)
-
+    def table_row_fixed(widths, values, h=6):
+        """Linha de tabela com quebras corretas e altura uniforme."""
         processed = [wrap_text(v, pdf, widths[i] - 2) for i, v in enumerate(values)]
         max_lines = max(len(col) for col in processed)
         row_h = max_lines * h
@@ -369,28 +338,25 @@ def gerar_pdf(dados):
         if pdf.get_y() + row_h > pdf.page_break_trigger:
             pdf.add_page()
 
-        x0 = pdf.get_x()
-        y0 = pdf.get_y()
+        x = pdf.get_x()
+        y = pdf.get_y()
 
         for i, width in enumerate(widths):
-            x = pdf.get_x()
-            pdf.rect(x, y0, width, row_h)
+            pdf.rect(x, y, width, row_h)
             for j, line in enumerate(processed[i]):
-                pdf.set_xy(x + 1, y0 + j * h)
-                pdf.cell(width - 2, h, line, align=aligns[i])
-            pdf.set_x(x + width)
+                pdf.set_xy(x + 1, y + j * h)
+                pdf.cell(width - 2, h, line)
+            x += width
 
-        pdf.set_xy(x0, y0 + row_h)
+        pdf.set_y(y + row_h)
 
     # --------------------------------------------------------
     # CABEÇALHO PRINCIPAL
     # --------------------------------------------------------
     pdf.set_fill_color(31, 73, 125)
     pdf.set_text_color(255, 255, 255)
-    set_font(16, True)
-
-    nome_conv = safe_get(dados, "nome").upper()
-    pdf.cell(0, 15, f"GUIA TÉCNICA: {nome_conv}", ln=True, align="C", fill=True)
+    pdf.set_font(FONT, "B", 16)
+    pdf.cell(0, 12, f"GUIA TÉCNICA: {safe_get(dados,'nome').upper()}", ln=1, align="C", fill=True)
 
     pdf.ln(4)
     pdf.set_text_color(0, 0, 0)
@@ -399,72 +365,71 @@ def gerar_pdf(dados):
     # SEÇÃO 1 — IDENTIFICAÇÃO
     # --------------------------------------------------------
     pdf.set_fill_color(230, 230, 230)
-    set_font(11, True)
-    pdf.cell(0, 8, " 1. DADOS DE IDENTIFICAÇÃO E ACESSO", ln=True, fill=True)
+    pdf.set_font(FONT, "B", 12)
+    pdf.cell(0, 8, " 1. DADOS DE IDENTIFICAÇÃO E ACESSO", ln=1, fill=True)
     pdf.ln(2)
 
-    two_cols("Empresa", safe_get(dados, "empresa"),
-             "Código", safe_get(dados, "codigo"))
+    pdf.set_font(FONT, "", 10)
 
-    cell_label_value("Portal", safe_get(dados, "site"))
+    two_cols_fixed(
+        "Empresa", safe_get(dados,"empresa"),
+        "Código",  safe_get(dados,"codigo")
+    )
 
-    two_cols("Login", safe_get(dados, "login"),
-             "Senha", safe_get(dados, "senha"))
+    cell_label_value("Portal", safe_get(dados,"site"), 32, CONTENT)
+    pdf.ln(1)
 
-    two_cols("Sistema", safe_get(dados, "sistema_utilizado"),
-             "Retorno", safe_get(dados, "prazo_retorno"))
+    two_cols_fixed(
+        "Login", safe_get(dados,"login"),
+        "Senha", safe_get(dados,"senha")
+    )
+
+    two_cols_fixed(
+        "Sistema", safe_get(dados,"sistema_utilizado"),
+        "Retorno", safe_get(dados,"prazo_retorno")
+    )
 
     pdf.ln(4)
 
     # --------------------------------------------------------
-    # SEÇÃO 2 — REGRAS TÉCNICAS (TABELA)
+    # SEÇÃO 2 — REGRAS TÉCNICAS
     # --------------------------------------------------------
     pdf.set_fill_color(230, 230, 230)
-    set_font(11, True)
-    pdf.cell(0, 8, " 2. CRONOGRAMA E REGRAS TÉCNICAS", ln=True, fill=True)
+    pdf.set_font(FONT,"B",12)
+    pdf.cell(0,8," 2. CRONOGRAMA E REGRAS TÉCNICAS", ln=1, fill=True)
     pdf.ln(2)
 
-    headers = ["Prazo Envio", "Validade Guia", "XML / Versão", "Nota Fiscal", "Fluxo NF"]
-    widths = [40, 30, 32, 30, 60]
-    aligns = ["C"] * 5
+    widths = [38, 30, 40, 26, 56]
 
-    set_font(9, True)
-    table_row(widths, headers, aligns=aligns, h=7)
+    pdf.set_font(FONT,"B",10)
+    table_row_fixed(widths, ["Prazo", "Validade", "XML/Versão", "NF", "Fluxo"])
 
-    set_font(9, False)
-    xml_flag = safe_get(dados, "xml")
-    xml_ver = safe_get(dados, "versao_xml")
+    pdf.set_font(FONT,"",10)
+    table_row_fixed(widths, [
+        safe_get(dados,"envio"),
+        safe_get(dados,"validade") + " dias" if safe_get(dados,"validade") else "—",
+        f"{safe_get(dados,'xml')} / {safe_get(dados,'versao_xml')}",
+        safe_get(dados,"nf"),
+        safe_get(dados,"fluxo_nf")
+    ])
 
-    table_row(
-        widths,
-        [
-            safe_get(dados, "envio"),
-            f"{safe_get(dados, 'validade')} dias" if safe_get(dados, "validade") else "—",
-            f"{xml_flag} / {xml_ver}",
-            safe_get(dados, "nf"),
-            safe_get(dados, "fluxo_nf")
-        ],
-        aligns=aligns,
-        h=7
-    )
-
-    pdf.ln(5)
+    pdf.ln(3)
 
     # --------------------------------------------------------
-    # SEÇÃO 3 — BLOCOS EXTRAS
+    # SEÇÃO 3 — BLOCOS FINAIS
     # --------------------------------------------------------
     def bloco(titulo, campo):
-        texto = safe_get(dados, campo)
-        if not texto:
+        txt = safe_get(dados, campo)
+        if not txt:
             return
 
-        pdf.set_fill_color(240, 240, 240)
-        set_font(11, True)
-        pdf.cell(0, 7, f" {titulo}", ln=True, fill=True)
+        pdf.set_font(FONT,"B",11)
+        pdf.set_fill_color(240,240,240)
+        pdf.cell(0,7,f" {titulo}",ln=1,fill=True)
 
-        set_font(9, False)
-        pdf.multi_cell(0, 5, texto, border=1)
-        pdf.ln(3)
+        pdf.set_font(FONT,"",10)
+        pdf.multi_cell(0,5, txt, border=1)
+        pdf.ln(2)
 
     bloco("CONFIGURAÇÃO DO GERADOR XML", "config_gerador")
     bloco("DIGITALIZAÇÃO E DOCUMENTAÇÃO", "doc_digitalizacao")
@@ -473,15 +438,15 @@ def gerar_pdf(dados):
     # --------------------------------------------------------
     # RODAPÉ
     # --------------------------------------------------------
-    pdf.set_y(-20)
-    set_font(8, False)
-    pdf.set_text_color(120, 120, 120)
-    pdf.cell(0, 10, "Manual de Faturamento — GABMA", align="C")
+    pdf.set_y(-15)
+    pdf.set_font(FONT,"",8)
+    pdf.set_text_color(120,120,120)
+    pdf.cell(0,10,"Manual de Faturamento — GABMA", align="C")
 
-    
-    pdf_bytes = pdf.output(dest="S").encode("latin-1")
-    return pdf_bytes
-
+    # --------------------------------------------------------
+    # RETORNO DO PDF
+    # --------------------------------------------------------
+    return pdf.output(dest="S").encode("latin-1")
 
 
 
