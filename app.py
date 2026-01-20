@@ -78,46 +78,102 @@ def extrair_dados_manual(texto_manual):
     return dados_extraidos
 
 # --- GERADOR DE PDF ---
+Para implementar esse layout profissional e organizado no seu sistema GABMA, precisamos atualizar a função gerar_pdf no seu arquivo app.py. O foco será usar tabelas (ou grades visuais), cores para destacar títulos e uma organização por blocos lógicos.
+
+Abaixo está o código da função atualizado para o seu sistema. Note que utilizei cores (cinza claro para fundos de títulos) e uma estrutura de "células" que simula uma tabela profissional.
+
+🛠️ Nova Função gerar_pdf (Layout Profissional)
+Python
+
+from fpdf import FPDF
+import os
+
 def gerar_pdf(dados):
     pdf = FPDF()
     pdf.add_page()
     
+    # Configuração de Fonte Unicode
     fonte_path = "DejaVuSans.ttf"
     if os.path.exists(fonte_path):
-        pdf.add_font("DejaVu", "", fonte_path)
-        pdf.set_font("DejaVu", "", 14)
+        pdf.add_font("DejaVu", "", fonte_path, uni=True)
+        pdf.add_font("DejaVu", "B", "DejaVuSans-Bold.ttf", uni=True) # Se tiver a Bold
+        pdf.set_font("DejaVu", "", 12)
         fonte_principal = "DejaVu"
     else:
-        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_font("Helvetica", "", 12)
         fonte_principal = "Helvetica"
-        st.warning("Arquivo DejaVuSans.ttf não encontrado. Acentos podem falhar.")
 
-    pdf.set_font(fonte_principal, "B" if fonte_principal == "Helvetica" else "", 16)
-    pdf.cell(0, 10, f"Formulário de Faturamento: {dados['nome']}", new_x="LMARGIN", new_y="NEXT", align='C')
-    pdf.ln(10)
-    
-    pdf.set_font(fonte_principal, "B" if fonte_principal == "Helvetica" else "", 12)
-    pdf.cell(0, 10, "1. Acesso e Portal", new_x="LMARGIN", new_y="NEXT")
-    
-    pdf.set_font(fonte_principal, "", 10)
-    info_acesso = (
-        f"Site: {dados['site']}\n"
-        f"Login: {dados['login']} | Senha: {dados['senha']}\n"
-        f"XML: {dados['xml']} | Envio: {dados['envio']}\n"
-        f"Validade: {dados['validade']} dias"
-    )
-    pdf.multi_cell(0, 7, info_acesso)
+    # --- CABEÇALHO ---
+    pdf.set_fill_color(31, 73, 125) # Azul Escuro (GABMA Style)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font(fonte_principal, "B", 16)
+    pdf.cell(0, 15, f"GUIA DE FATURAMENTO: {dados['nome'].upper()}", ln=True, align='C', fill=True)
     pdf.ln(5)
-    
-    pdf.set_font(fonte_principal, "B" if fonte_principal == "Helvetica" else "", 12)
-    pdf.cell(0, 10, "2. Regras Extraídas do Manual", new_x="LMARGIN", new_y="NEXT")
+
+    # --- SEÇÃO 1: ACESSO E PORTAL (LAYOUT TABELA) ---
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font(fonte_principal, "B", 12)
+    pdf.set_fill_color(230, 230, 230) # Cinza claro para o cabeçalho da seção
+    pdf.cell(0, 8, " 1. INFORMAÇÕES DE ACESSO", ln=True, fill=True)
     
     pdf.set_font(fonte_principal, "", 10)
-    pdf.multi_cell(0, 6, dados['observacoes'])
+    pdf.ln(2)
+    # Linha 1: Site
+    pdf.set_font(fonte_principal, "B", 10)
+    pdf.cell(30, 7, "Site/Portal:", border=0)
+    pdf.set_font(fonte_principal, "", 10)
+    pdf.cell(0, 7, dados['site'], ln=True)
     
-    # IMPORTANTE: No fpdf2, output() sem argumentos retorna bytes. 
-    # Usamos bytearray para garantir que o Streamlit entenda como dado binário.
-    return bytes(pdf.output())
+    # Linha 2: Login e Senha
+    pdf.set_font(fonte_principal, "B", 10)
+    pdf.cell(30, 7, "Login:", border=0)
+    pdf.set_font(fonte_principal, "", 10)
+    pdf.cell(60, 7, dados['login'])
+    
+    pdf.set_font(fonte_principal, "B", 10)
+    pdf.cell(20, 7, "Senha:", border=0)
+    pdf.set_font(fonte_principal, "", 10)
+    pdf.cell(0, 7, dados['senha'], ln=True)
+    pdf.ln(5)
+
+    # --- SEÇÃO 2: CRONOGRAMA E REGRAS TÉCNICAS ---
+    pdf.set_font(fonte_principal, "B", 12)
+    pdf.set_fill_color(230, 230, 230)
+    pdf.cell(0, 8, " 2. CRONOGRAMA E CONFIGURAÇÃO XML", ln=True, fill=True)
+    
+    pdf.ln(2)
+    # Criando uma mini tabela interna
+    pdf.set_font(fonte_principal, "B", 10)
+    pdf.cell(45, 8, "Data de Envio", border=1, align='C')
+    pdf.cell(45, 8, "Validade", border=1, align='C')
+    pdf.cell(45, 8, "Exige XML", border=1, align='C')
+    pdf.cell(45, 8, "Exige NF-e", border=1, align='C')
+    pdf.ln()
+    
+    pdf.set_font(fonte_principal, "", 10)
+    pdf.cell(45, 8, dados['envio'], border=1, align='C')
+    pdf.cell(45, 8, f"{dados['validade']} dias", border=1, align='C')
+    pdf.cell(45, 8, dados['xml'], border=1, align='C')
+    pdf.cell(45, 8, dados['nf'], border=1, align='C')
+    pdf.ln(10)
+
+    # --- SEÇÃO 3: OBSERVAÇÕES E REGRAS DO MANUAL ---
+    pdf.set_font(fonte_principal, "B", 12)
+    pdf.set_fill_color(230, 230, 230)
+    pdf.cell(0, 8, " 3. REGRAS CRÍTICAS E OBSERVAÇÕES", ln=True, fill=True)
+    
+    pdf.ln(3)
+    pdf.set_font(fonte_principal, "", 10)
+    # O multi_cell é ideal para textos longos do manual
+    pdf.multi_cell(0, 6, dados['observacoes'], border='L') # Borda lateral para dar estilo
+    
+    # --- RODAPÉ ---
+    pdf.set_y(-25)
+    pdf.set_font(fonte_principal, "I", 8)
+    pdf.set_text_color(128, 128, 128)
+    pdf.cell(0, 10, "Documento gerado pelo Sistema GABMA - Consultoria Médica", align='C')
+
+    return pdf.output()
 
 # --- INTERFACE STREAMLIT ---
 st.set_page_config(page_title="GABMA System", layout="wide")
