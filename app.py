@@ -223,7 +223,9 @@ def wrap_text(text, pdf, max_width):
             if current:
                 lines.append(current)
                 current = ""
-            lines.extend(chunk_text(w, max_width // 3))
+            
+            size = max(1, max_width // 3)
+            lines.extend(chunk_text(w, size))
             continue
 
         candidate = f"{current} {w}".strip() if current else w
