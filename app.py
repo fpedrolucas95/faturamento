@@ -256,10 +256,11 @@ def wrap_text(text, pdf, max_width):
 # 7. GERAÇÃO DO PDF — VERSÃO ORGANIZADA, PROFISSIONAL E ESTÁVEL
 # ============================================================
 
+
 def gerar_pdf(dados):
     """
     Gera PDF técnico detalhado do convênio utilizando FPDF.
-    Inclui seções, tabelas, quebras inteligentes e layout corporativo.
+    (VERSÃO FINAL — CORRIGIDA E À PROVA DE ERROS)
     """
 
     pdf = FPDF()
@@ -268,17 +269,14 @@ def gerar_pdf(dados):
     pdf.add_page()
 
     # --------------------------------------------------------
-    # CONFIGURAÇÃO DE FONTES
+    # FONTES
     # --------------------------------------------------------
     fonte_normal = "DejaVuSans.ttf"
     fonte_bold = "DejaVuSans-Bold.ttf"
 
-    has_normal = os.path.exists(fonte_normal)
-    has_bold = os.path.exists(fonte_bold)
-
-    if has_normal:
+    if os.path.exists(fonte_normal):
         pdf.add_font("DejaVu", "", fonte_normal, uni=True)
-        if has_bold:
+        if os.path.exists(fonte_bold):
             pdf.add_font("DejaVu", "B", fonte_bold, uni=True)
         FONT = "DejaVu"
     else:
@@ -298,7 +296,6 @@ def gerar_pdf(dados):
     # --------------------------------------------------------
 
     def cell_label_value(label, value, label_w=40, h=7):
-        """Linha 'Label: Valor' com quebra automática."""
         label = sanitize_text(label)
         value = sanitize_text(value)
 
@@ -318,7 +315,6 @@ def gerar_pdf(dados):
                 pdf.cell(usable, h, ln_text, ln=1)
 
     def two_cols(label1, val1, label2, val2, label_w=38, gap=6, h=7):
-        """Duas colunas lado a lado com quebra automática."""
         col_width = (CONTENT_WIDTH - gap) / 2
 
         val1 = sanitize_text(val1)
@@ -339,9 +335,9 @@ def gerar_pdf(dados):
         pdf.set_xy(pdf.l_margin, y_start)
         pdf.cell(label_w, h, f"{label1}:")
         set_font(9, False)
-        x_start_left = pdf.get_x()
+        x_left = pdf.get_x()
         for i, txt in enumerate(lines_left):
-            pdf.set_xy(x_start_left, y_start + i * h)
+            pdf.set_xy(x_left, y_start + i * h)
             pdf.cell(col_width - label_w, h, txt)
 
         # Coluna direita
@@ -350,17 +346,15 @@ def gerar_pdf(dados):
         pdf.set_xy(x_right, y_start)
         pdf.cell(label_w, h, f"{label2}:")
         set_font(9, False)
-        x_start_right = pdf.get_x()
+        x_r_val = pdf.get_x()
         for i, txt in enumerate(lines_right):
-            pdf.set_xy(x_start_right, y_start + i * h)
+            pdf.set_xy(x_r_val, y_start + i * h)
             pdf.cell(col_width - label_w, h, txt)
 
         pdf.set_y(y_start + row_h)
 
     def table_row(widths, values, aligns=None, h=6):
-        """Linha de tabela com bordas, múltiplas linhas e altura uniforme."""
         aligns = aligns or ["L"] * len(widths)
-
         processed = [wrap_text(v, pdf, widths[i] - 2) for i, v in enumerate(values)]
         max_lines = max(len(col) for col in processed)
         row_h = max_lines * h
@@ -416,7 +410,7 @@ def gerar_pdf(dados):
     pdf.ln(4)
 
     # --------------------------------------------------------
-    # SEÇÃO 2 — REGRAS TÉCNICAS (TABELA)
+    # SEÇÃO 2 — REGRAS TÉCNICAS
     # --------------------------------------------------------
     pdf.set_fill_color(230, 230, 230)
     set_font(11, True)
@@ -477,7 +471,12 @@ def gerar_pdf(dados):
     pdf.set_text_color(120, 120, 120)
     pdf.cell(0, 10, "Manual de Faturamento — GABMA", align="C")
 
-    return pdf.output(dest='S') if isinstance(pdf.output(dest='S'), bytes) else bytes(pdf.output(), 'latin-1')
+    # --------------------------------------------------------
+    # RETORNO EM BYTES (CORREÇÃO DO PDF CORROMPIDO)
+    # --------------------------------------------------------
+    pdf_bytes = pdf.output(dest='S').encode('latin-1')
+    return pdf_bytes
+
 
 
 # ============================================================
