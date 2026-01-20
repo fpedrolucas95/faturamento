@@ -78,62 +78,80 @@ def extrair_dados_manual(texto_manual):
     return dados_extraidos
 
 # --- GERADOR DE PDF ---
+O erro FileNotFoundError ocorre porque o código está tentando carregar o arquivo DejaVuSans-Bold.ttf para aplicar negrito no novo layout, mas esse arquivo não existe na pasta do seu projeto no GitHub.
+
+Como você está usando o Streamlit Cloud, o sistema só "enxerga" o que você subiu no repositório.
+
+Como Corrigir Agora
+Para que o código funcione imediatamente (mesmo sem você subir novos arquivos de fonte agora), vamos ajustar a função para ser mais "segura": ela só tentará carregar o negrito se o arquivo realmente estiver lá. Caso contrário, usará a fonte normal.
+
+Substitua a sua função # --- GERADOR DE PDF --- por esta versão corrigida:
+
+Python
+
+# --- GERADOR DE PDF (CORREÇÃO DE FONTE) ---
 def gerar_pdf(dados):
     pdf = FPDF()
     pdf.add_page()
     
-    # Configuração de Fonte Unicode
-    fonte_path = "DejaVuSans.ttf"
-    if os.path.exists(fonte_path):
-        pdf.add_font("DejaVu", "", fonte_path, uni=True)
-        pdf.add_font("DejaVu", "B", "DejaVuSans-Bold.ttf", uni=True) # Se tiver a Bold
-        pdf.set_font("DejaVu", "", 12)
+    # Caminhos dos arquivos de fonte
+    fonte_normal = "DejaVuSans.ttf"
+    fonte_negrito = "DejaVuSans-Bold.ttf"
+    
+    # Lógica de carregamento de fontes
+    if os.path.exists(fonte_normal):
+        pdf.add_font("DejaVu", "", fonte_normal, uni=True)
         fonte_principal = "DejaVu"
+        # Só tenta carregar o negrito se o arquivo existir
+        if os.path.exists(fonte_negrito):
+            pdf.add_font("DejaVu", "B", fonte_negrito, uni=True)
+            estilo_b = "B"
+        else:
+            estilo_b = "" # Se não tem o arquivo Bold, usa a normal mesmo
     else:
+        # Se não tiver nem a normal, volta para a padrão do PDF
         pdf.set_font("Helvetica", "", 12)
         fonte_principal = "Helvetica"
+        estilo_b = "B"
 
     # --- CABEÇALHO ---
-    pdf.set_fill_color(31, 73, 125) # Azul Escuro (GABMA Style)
+    pdf.set_fill_color(31, 73, 125) # Azul GABMA
     pdf.set_text_color(255, 255, 255)
-    pdf.set_font(fonte_principal, "B", 16)
+    pdf.set_font(fonte_principal, estilo_b, 16)
     pdf.cell(0, 15, f"GUIA DE FATURAMENTO: {dados['nome'].upper()}", ln=True, align='C', fill=True)
     pdf.ln(5)
 
-    # --- SEÇÃO 1: ACESSO E PORTAL (LAYOUT TABELA) ---
+    # --- SEÇÃO 1: ACESSO ---
     pdf.set_text_color(0, 0, 0)
-    pdf.set_font(fonte_principal, "B", 12)
-    pdf.set_fill_color(230, 230, 230) # Cinza claro para o cabeçalho da seção
+    pdf.set_font(fonte_principal, estilo_b, 12)
+    pdf.set_fill_color(230, 230, 230)
     pdf.cell(0, 8, " 1. INFORMAÇÕES DE ACESSO", ln=True, fill=True)
     
     pdf.set_font(fonte_principal, "", 10)
     pdf.ln(2)
-    # Linha 1: Site
-    pdf.set_font(fonte_principal, "B", 10)
+    pdf.set_font(fonte_principal, estilo_b, 10)
     pdf.cell(30, 7, "Site/Portal:", border=0)
     pdf.set_font(fonte_principal, "", 10)
     pdf.cell(0, 7, dados['site'], ln=True)
     
-    # Linha 2: Login e Senha
-    pdf.set_font(fonte_principal, "B", 10)
+    pdf.set_font(fonte_principal, estilo_b, 10)
     pdf.cell(30, 7, "Login:", border=0)
     pdf.set_font(fonte_principal, "", 10)
     pdf.cell(60, 7, dados['login'])
     
-    pdf.set_font(fonte_principal, "B", 10)
+    pdf.set_font(fonte_principal, estilo_b, 10)
     pdf.cell(20, 7, "Senha:", border=0)
     pdf.set_font(fonte_principal, "", 10)
     pdf.cell(0, 7, dados['senha'], ln=True)
     pdf.ln(5)
 
-    # --- SEÇÃO 2: CRONOGRAMA E REGRAS TÉCNICAS ---
-    pdf.set_font(fonte_principal, "B", 12)
+    # --- SEÇÃO 2: TABELA ---
+    pdf.set_font(fonte_principal, estilo_b, 12)
     pdf.set_fill_color(230, 230, 230)
     pdf.cell(0, 8, " 2. CRONOGRAMA E CONFIGURAÇÃO XML", ln=True, fill=True)
     
     pdf.ln(2)
-    # Criando uma mini tabela interna
-    pdf.set_font(fonte_principal, "B", 10)
+    pdf.set_font(fonte_principal, estilo_b, 10)
     pdf.cell(45, 8, "Data de Envio", border=1, align='C')
     pdf.cell(45, 8, "Validade", border=1, align='C')
     pdf.cell(45, 8, "Exige XML", border=1, align='C')
@@ -147,23 +165,23 @@ def gerar_pdf(dados):
     pdf.cell(45, 8, dados['nf'], border=1, align='C')
     pdf.ln(10)
 
-    # --- SEÇÃO 3: OBSERVAÇÕES E REGRAS DO MANUAL ---
-    pdf.set_font(fonte_principal, "B", 12)
+    # --- SEÇÃO 3: OBSERVAÇÕES ---
+    pdf.set_font(fonte_principal, estilo_b, 12)
     pdf.set_fill_color(230, 230, 230)
     pdf.cell(0, 8, " 3. REGRAS CRÍTICAS E OBSERVAÇÕES", ln=True, fill=True)
     
     pdf.ln(3)
     pdf.set_font(fonte_principal, "", 10)
-    # O multi_cell é ideal para textos longos do manual
-    pdf.multi_cell(0, 6, dados['observacoes'], border='L') # Borda lateral para dar estilo
+    pdf.multi_cell(0, 6, dados['observacoes'], border='L')
     
     # --- RODAPÉ ---
     pdf.set_y(-25)
-    pdf.set_font(fonte_principal, "I", 8)
+    pdf.set_font(fonte_principal, "I" if fonte_principal == "Helvetica" else "", 8)
     pdf.set_text_color(128, 128, 128)
     pdf.cell(0, 10, "Documento gerado pelo Sistema GABMA - Consultoria Médica", align='C')
 
-    return pdf.output()
+    # Retorna bytes (importante usar bytes() para evitar erro no download_button)
+    return bytes(pdf.output())
 
 # --- INTERFACE STREAMLIT ---
 st.set_page_config(page_title="GABMA System", layout="wide")
