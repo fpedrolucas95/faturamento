@@ -254,54 +254,40 @@ def fix_technical_spacing(txt: str) -> str:
     if not txt:
         return ""
 
-    # ⛔ evita reaplicar se já passou pela função
-    if "__URL" in txt:
-        return txt
-
-    # protege URLs individualmente
     urls = {}
+
     def _url_replacer(match):
         key = f"__URL{len(urls)}__"
         urls[key] = match.group(0)
         return key
 
-    # isola URLs
+    # protege URLs
     txt = re.sub(r"https?://\S+", _url_replacer, txt)
 
-   # número → letra
+    # número → letra
     txt = re.sub(r"(\d)([^\W\d_])", r"\1 \2", txt, flags=re.UNICODE)
 
     # letra → número
     txt = re.sub(r"([^\W\d_])(\d)", r"\1 \2", txt, flags=re.UNICODE)
 
     correcoes = {
+        r"PEL A SMARTKIDS": "PELA SMARTKIDS",
         r"serpediatria": "ser pediatria",
         r"depacote": "de pacote",
-        r"maisatualizadas": "mais atualizadas",
-        r"ordemalfabética": "ordem alfabética",
-        r"paraenviar": "para enviar",
-        r"epesquisa": "e pesquisa",
-        r"deuerro": "deu erro",
-        r"sófechar": "só fechar",
-        r"noSisAmil": "no SisAmil",
-        r"ofaturamento": "o faturamento",
-        r"ofinanceiro": "o financeiro",
-        r"protocolosaparecerão": "protocolos aparecerão",
-        r"Finalizarfaturamento": "Finalizar faturamento",
-        r"PELASMARTKIDS": "PELA SMARTKIDS",
         r"XMLnovamente": "XML novamente",
         r"diasútil": "dias útil",
-        r"diasuteis": "dias úteis"
+        r"diasuteis": "dias úteis",
     }
 
     for erro, corrigido in correcoes.items():
         txt = re.sub(erro, corrigido, txt, flags=re.IGNORECASE)
 
-    # restaura URLs intactas
+    # restaura URLs
     for key, url in urls.items():
         txt = txt.replace(key, url)
 
     return txt
+    
 def sanitize_text(text: str) -> str:
     if text is None:
         return ""
@@ -343,7 +329,7 @@ def generate_id(dados_atuais):
 def safe_get(data, key, default=""):
     if not isinstance(data, dict):
         return default
-    return sanitize_text(data.get(key, default))
+    return data.get(key, default) or ""
 
 # ============================================================
 # 7. WRAP DE TEXTO (URLs, palavras longas) + utilidades
