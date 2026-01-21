@@ -548,7 +548,7 @@ def gerar_pdf(dados):
     # Título (barra azul) — SOMENTE NOME DO CONVÊNIO
     # --------------------------
     nome_conv = sanitize_text(safe_get(dados, "nome")).upper()
-    titulo_full = f"GUIA TÉCNICA: {nome_conv}" if nome_conv else "GUIA TÉCNICA"
+    titulo_full = f"MANUAL: {nome_conv}" if nome_conv else "GUIA TÉCNICA"
 
     pdf.set_fill_color(*BLUE)
     pdf.set_text_color(255, 255, 255)
