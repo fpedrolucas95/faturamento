@@ -264,68 +264,50 @@ def fix_technical_spacing(txt: str) -> str:
     # 1️⃣ Protege URLs
     txt = re.sub(r"https?://\S+", _url_replacer, txt)
 
-    # 2️⃣ Número ↔ letra
+    # 2️⃣ Garante espaço após bullet / traço
+    txt = re.sub(r"([•\-–—])([^\s])", r"\1 \2", txt)
+
+    # 3️⃣ Número ↔ letra
     txt = re.sub(r"(\d)([^\W\d_])", r"\1 \2", txt, flags=re.UNICODE)
     txt = re.sub(r"([^\W\d_])(\d)", r"\1 \2", txt, flags=re.UNICODE)
 
-    # 3️⃣ Palavra colada (minúscula → maiúscula)
+    # 4️⃣ Minúscula → Maiúscula
     txt = re.sub(r"([a-záéíóúãõç])([A-ZÁÉÍÓÚÃÕÇ])", r"\1 \2", txt)
 
-    # 4️⃣ Palavra colada (acentuada → letra)
-    txt = re.sub(r"([áéíóúãõçÁÉÍÓÚÃÕÇ])([A-Za-z])", r"\1 \2", txt)
-
-    # 5️⃣ Sigla → palavra (XMLnovamente, NFsem, PDFgerado)
+    # 5️⃣ Sigla → palavra
     txt = re.sub(r"([A-Z]{2,})([a-záéíóúãõç])", r"\1 \2", txt)
 
-    # 6️⃣ Palavra → sigla (arquivoXML)
+    # 6️⃣ Palavra → sigla
     txt = re.sub(r"([a-záéíóúãõç])([A-Z]{2,})", r"\1 \2", txt)
 
-    # 7️⃣ Símbolo/bullet → letra
-    txt = re.sub(r"([•\-–—])([A-Za-zÁÉÍÓÚÃÕÇ])", r"\1 \2", txt)
-
-    # 8️⃣ Correções específicas conhecidas (residual)
-    correcoes = {
-        r"PEL A SMARTKIDS": "PELA SMARTKIDS",
-        r"serpediatria": "ser pediatria",
-        r"depacote": "de pacote",
-        r"diasútil": "dias útil",
-        r"diasuteis": "dias úteis",
-    }
-
-    for erro, corrigido in correcoes.items():
-        txt = re.sub(erro, corrigido, txt, flags=re.IGNORECASE)
-
-    # 9️⃣ Restaura URLs
+    # 7️⃣ Restaura URLs
     for key, url in urls.items():
         txt = txt.replace(key, url)
 
     return txt
     
 def sanitize_text(text: str) -> str:
-    if text is None:
+    if not text:
         return ""
 
     txt = str(text)
 
-    # garante espaço após bullet
-    txt = re.sub(r"([•\-–—])([^\s])", r"\1 \2", txt)
-    
-    # Normaliza Unicode
-    txt = unicodedata.normalize("NFC", str(text))
-    
-    # Converte espaços Unicode e invisíveis em espaços normais
+    # 1️⃣ Normalização Unicode CORRETA
+    txt = unicodedata.normalize("NFKC", txt)
+
+    # 2️⃣ Converte espaços Unicode e invisíveis
     txt = re.sub(r"[\u00A0\u1680\u180E\u2000-\u200A\u202F\u205F\u3000]", " ", txt)
     txt = re.sub(r"[\u200B-\u200F\u202A-\u202E\u2060-\u206F]", "", txt)
     txt = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", txt)
-    
-    # APLICA A CORREÇÃO DE ESPAÇAMENTO TÉCNICO
-    txt = fix_technical_spacing(txt)
-    
-    # Colapsa múltiplos espaços em um só
-    txt = re.sub(r"[ \t]+", " ", txt)
-    
-    return txt.replace("\r", "").strip()
 
+    # 3️⃣ Correção semântica e espaçamento técnico (ÚNICO lugar)
+    txt = fix_technical_spacing(txt)
+
+    # 4️⃣ Normalização de espaços
+    txt = re.sub(r"[ \t]+", " ", txt)
+
+    return txt.replace("\r", "").strip()
+    
 def normalize(value):
     if not value: return ""
     return sanitize_text(value).strip().lower()
