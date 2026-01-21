@@ -251,8 +251,12 @@ CSS_GLOBAL = f"""
 # 6. UTILITÁRIAS — Unicode + correção forte de espaços
 # ============================================================
 def fix_technical_spacing(txt: str) -> str:
-    if not txt:
+     if not txt:
         return ""
+
+    # ⛔ evita reaplicar se já passou pela função
+    if "__URL" in txt:
+        return txt
 
     # protege URLs individualmente
     urls = {}
