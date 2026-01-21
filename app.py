@@ -257,6 +257,7 @@ def ui_text(value):
 
 
 
+
 def fix_technical_spacing(txt: str) -> str:
     if not txt:
         return ""
@@ -283,7 +284,7 @@ def fix_technical_spacing(txt: str) -> str:
     txt = re.sub(r"(?<!\s)/(?!\s)(?=\w)", " / ", txt)
     txt = re.sub(r"\s*/\s*", " / ", txt)
 
-    # 5) Correções conhecidas
+    # 5) Correções conhecidas (casos reais)
     correcoes = {
         r"\bPELASMARTKIDS\b": "PELA SMARTKIDS",
         r"\bserpediatria\b": "ser pediatria",
@@ -301,7 +302,7 @@ def fix_technical_spacing(txt: str) -> str:
     txt = re.sub(r"([A-Z]{2,})([a-záéíóúãõç])", r"\1 \2", txt)
     txt = re.sub(r"([a-záéíóúãõç])([A-Z]{2,})", r"\1 \2", txt)
 
-    # 7) bullets coladas
+    # 7) bullets coladas (•DRA. -> • DRA.)
     txt = re.sub(r"([•\-–—\*→])([^\s])", r"\1 \2", txt)
 
     # 8) Restaura URLs
@@ -332,6 +333,7 @@ def sanitize_text(text: str) -> str:
     txt = re.sub(r"[ \t]+", " ", txt)
 
     return txt.replace("\r", "").strip()
+
     
 def normalize(value):
     if not value: return ""
@@ -713,10 +715,12 @@ def gerar_pdf(dados):
 
     headers = ["Prazo Envio", "Validade Guia", "XML / Versão", "Nota Fiscal", "Fluxo NF"]
 
+    
     xml_flag = safe_get(dados, "xml") or "—"
     xml_ver  = safe_get(dados, "versao_xml") or "—"
     xml_composto = f"{xml_flag} / {xml_ver}"
     xml_composto = re.sub(r"(?<=\w)/(?!\s)", " / ", xml_composto)
+
 
     row = [
         safe_get(dados, "envio"),      # ex. "Data de envio: 01 ao 05 dias útil"
