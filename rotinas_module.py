@@ -225,7 +225,8 @@ class RotinasModule:
         
         
         descricao_html = st_quill(
-            value=self.safe_get(dados_rotina, "descricao"),
+            # Garante que se safe_get retornar None, vira uma string vazia
+            value=self.safe_get(dados_rotina, "descricao", "") or "", 
             key=f"quill_rotina_{rotina_id}",
             placeholder="Digite o passo a passo completo da rotina...",
             theme="snow",
