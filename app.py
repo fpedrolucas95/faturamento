@@ -268,9 +268,11 @@ def fix_technical_spacing(txt: str) -> str:
     # isola URLs
     txt = re.sub(r"https?://\S+", _url_replacer, txt)
 
-    # separa número/letra
-    txt = re.sub(r"(\d)([A-Za-zÀ-ÖØ-öø-ÿ])", r"\1 \2", txt)
-    txt = re.sub(r"([A-Za-zÀ-ÖØ-öø-ÿ])(\d)", r"\1 \2", txt)
+   # número → letra
+    txt = re.sub(r"(\d)([^\W\d_])", r"\1 \2", txt, flags=re.UNICODE)
+
+    # letra → número
+    txt = re.sub(r"([^\W\d_])(\d)", r"\1 \2", txt, flags=re.UNICODE)
 
     correcoes = {
         r"serpediatria": "ser pediatria",
@@ -305,7 +307,9 @@ def sanitize_text(text: str) -> str:
     Normaliza para NFC, limpa invisíveis e aplica correções técnicas de espaço.
     """
     if text is None: return ""
-    
+    # garante espaço após bullet
+    txt = re.sub(r"([•\-–—])([^\s])", r"\1 \2", txt)
+
     # Normaliza Unicode
     txt = unicodedata.normalize("NFC", str(text))
     
@@ -335,15 +339,14 @@ def generate_id(dados_atuais):
         except Exception: continue
     return max(ids) + 1 if ids else 1
 
-def safe_get(d: dict, key: str, default=""):
-    if not isinstance(d, dict): return default
-    return sanitize_text(d.get(key, default))
+def safe_get(data, key, default=""):
+    value = data.get(key, default)
+    return sanitize_text(value)
 
 # ============================================================
 # 7. WRAP DE TEXTO (URLs, palavras longas) + utilidades
 # ============================================================
 def chunk_text(text, size):
-    text = sanitize_text(text or "")
     safe_size = int(size) if size and size >= 1 else 1
     return [text[i:i+safe_size] for i in range(0, len(text), safe_size)]
 
@@ -374,7 +377,6 @@ def wrap_text(text, pdf, max_width):
     Quebra texto respeitando largura. Para tokens longos (URLs etc.),
     quebra por delimitadores SEM inserir espaços visíveis.
     """
-    text = sanitize_text(text)
     if not text:
         return [""]
 
@@ -477,12 +479,13 @@ def build_wrapped_lines(text, pdf, usable_w, line_h, bullet_indent=4.0):
     lines_out = []
     if not text: return []
 
+    text = sanitize_text(text) 
+
     paragraphs = text.split('\n')
     bullet_re = re.compile(r"^\s*(?:[\u2022•\-–—\*]|->|→)\s*(.*)$")
 
     for p in paragraphs:
         # A higienização aqui garantirá a separação das palavras
-        clean = sanitize_text(p)
         if not clean:
             lines_out.append(("", 0.0))
             continue
