@@ -4,6 +4,7 @@
 #  COLUNA ÚNICA NA SEÇÃO 1 • TABELA DA SEÇÃO 2 IGUAL AO PRINT
 #  OBSERVAÇÕES CRÍTICAS COM PARÁGRAFOS + BULLETS
 #  PDF UNICODE (DejaVu) + WRAP DE URL SEM ESPAÇOS EXTRAS
+#  TÍTULO: SOMENTE NOME DO CONVÊNIO
 # ============================================================
 
 # ------------------------------------------------------------
@@ -539,11 +540,13 @@ def gerar_pdf(dados):
         pdf.set_y(y)
 
     # --------------------------
-    # Título (barra azul)
+    # Título (barra azul) — SOMENTE NOME DO CONVÊNIO
     # --------------------------
-    titulo_nome = sanitize_text(safe_get(dados, "nome")).upper()
-    titulo_emp  = sanitize_text(safe_get(dados, "empresa")).upper()
-    titulo_full = f"GUIA TÉCNICA: {titulo_nome}" + (f" - {titulo_emp}" if titulo_emp else "")
+    nome_conv = sanitize_text(safe_get(dados, "nome")).upper()
+    if nome_conv:
+        titulo_full = f"GUIA TÉCNICA: {nome_conv}"
+    else:
+        titulo_full = "GUIA TÉCNICA"
 
     pdf.set_fill_color(*BLUE)
     pdf.set_text_color(255, 255, 255)
@@ -880,7 +883,7 @@ def page_cadastro():
                                       index=VERSOES_TISS.index(valor_versao))
         with colB:
             valor_fluxo = safe_get(dados_conv, "fluxo_nf")
-            if valor_fluxo not in OPCOES_FLUXO_NF:
+            if valor_fluxo não in OPCOES_FLUXO_NF:
                 valor_fluxo = OPCOES_FLUXO_NF[0]
             fluxo_nf = st.selectbox("Fluxo da Nota", OPCOES_FLUXO_NF,
                                     index=OPCOES_FLUXO_NF.index(valor_fluxo))
