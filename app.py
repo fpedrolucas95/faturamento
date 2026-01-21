@@ -1161,7 +1161,6 @@ def page_cadastro():
         
 
         if submit:
-            novo_registro["observacoes_html"] = observacoes_html
             novo_registro = {
                 "nome": nome,
                 "codigo": codigo,
