@@ -341,8 +341,9 @@ def generate_id(dados_atuais):
     return max(ids) + 1 if ids else 1
 
 def safe_get(data, key, default=""):
-    value = data.get(key, default)
-    return sanitize_text(value)
+    if not isinstance(data, dict):
+        return default
+    return sanitize_text(data.get(key, default))
 
 # ============================================================
 # 7. WRAP DE TEXTO (URLs, palavras longas) + utilidades
