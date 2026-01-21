@@ -97,7 +97,7 @@ class GitHubJSON:
             ).decode("utf-8")
 
             payload = {
-                "message": "Atualização Manual Faturamento — GABMA",
+                "message": "Atualização Manual Faturamento",
                 "content": encoded,
                 "sha": sha,
                 "branch": self.branch,
@@ -1047,7 +1047,7 @@ def main():
         """
         <br><br>
         <div style='text-align:center; color:#777; font-size:13px; padding:10px;'>
-            © 2026 — Manual de Faturamento GABMA<br>
+            © 2026 — Manual de Faturamento<br>
             Desenvolvido com design corporativo Microsoft/MV
         </div>
         """,
