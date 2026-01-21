@@ -1153,20 +1153,26 @@ def page_cadastro():
 
     # Editor Quill fora do form
     if st_quill is None:
-        st.info("Editor avançado não instalado... usando modo texto simples.")
-        observacoes_html = st.text_area(
-            "Observações Críticas (HTML)",
-            value=initial_html or "",
-            height=300
-        )
+    # Fallback para área de texto comum
+    observacoes_html = st.text_area(
+        "Observações Críticas (HTML)",
+        value=initial_html,
+        height=300,
+        key=f"area_txt_{conv_id or 'novo'}"
+    )
     else:
-        observacoes_html = st_quill(
-            value=initial_html or "",
-            placeholder="Digite suas observações… (pode colar prints com Ctrl+V)",
-            html=True,
-            key=f"obs_quill_{conv_id or 'novo'}",
-            height=280,
-        )
+        # Adicionando um tratamento de erro específico para o componente
+        try:
+            observacoes_html = st_quill(
+                value=initial_html, # Garantido como string acima
+                placeholder="Digite suas observações… (pode colar prints com Ctrl+V)",
+                html=True,
+                key=f"quill_editor_{conv_id or 'novo'}", # Chave dinâmica é essencial
+                height=280,
+            )
+        except Exception as e:
+            st.error("Erro ao carregar o editor visual. Usando modo de segurança.")
+            observacoes_html = st.text_area("Observações (Segurança)", value=initial_html)
 
     # ============================================================
     # PROCESSAMENTO DO SUBMIT
