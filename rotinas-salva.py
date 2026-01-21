@@ -10,6 +10,11 @@ import pandas as pd
 import time
 import re
 
+# Import do editor
+from streamlit_quill import st_quill
+# (Opcional) Import do botão de colar imagem — ainda não usado aqui
+from streamlit_paste_button import paste_image_button
+
 
 class RotinasModule:
     """
@@ -19,23 +24,11 @@ class RotinasModule:
       - db_rotinas: instância de GitHubJSON
       - sanitize_text: função(str) -> str
       - build_wrapped_lines: função(str, FPDF, float, float, float) -> List[Tuple[str, float]]
-      - _pdf_set_fonts: função(FPDF) -> str  (retorna o nome da fonte ativa, ex.: "DejaVu" ou fallback)
+      - _pdf_set_fonts: função(FPDF) -> str  (retorna o nome da fonte ativa)
       - generate_id: função(list) -> int
       - safe_get: função(dict, str, default) -> str
       - primary_color: str (hex)
-      - setores_opcoes: List[str] com as opções de Setor (ex.: ["Apoio e Controle", ...])
-
-    Exemplo de instância no app.py:
-        rotinas_module = RotinasModule(
-            db_rotinas=db_rotinas,
-            sanitize_text=sanitize_text,
-            build_wrapped_lines=build_wrapped_lines,
-            _pdf_set_fonts=_pdf_set_fonts,
-            generate_id=generate_id,
-            safe_get=safe_get,
-            primary_color=PRIMARY_COLOR,
-            setores_opcoes=SETORES_ROTINA,
-        )
+      - setores_opcoes: List[str]
     """
 
     def __init__(
@@ -58,16 +51,21 @@ class RotinasModule:
         self.primary_color = primary_color
         self.setores_opcoes = list(setores_opcoes or [])
 
-    # =========================
-    # PDF de uma rotina (premium)
-    # =========================
+    # ============================================================
+    # LIMPEZA DE HTML (igual ao módulo principal)
+    # ============================================================
+    def _clean_html(self, raw_html: str) -> str:
+        """Remove tags HTML e normaliza espaços — compatível com PDF premium."""
+        if not raw_html:
+            return ""
+        cleanr = re.compile('<.*?>|&nbsp;')
+        cleantext = re.sub(cleanr, ' ', raw_html)
+        return re.sub(r' +', ' ', cleantext).strip()
+
+    # ============================================================
+    # PDF PREMIUM DA ROTINA
+    # ============================================================
     def gerar_pdf_rotina(self, dados: dict) -> bytes:
-        """
-        Gera PDF de uma única rotina com:
-        - Título azul (SOMENTE nome da rotina);
-        - Linha ‘Setor: ...’ abaixo do título;
-        - Seção “Descrição” em caixa com parágrafos/bullets, wrap e fontes Unicode.
-        """
         pdf = FPDF(orientation="P", unit="mm", format="A4")
         pdf.set_margins(15, 12, 15)
         pdf.set_auto_page_break(auto=True, margin=15)
@@ -94,18 +92,15 @@ class RotinasModule:
             pdf.cell(0, height, f" {texto.upper()}", ln=1, fill=True)
             pdf.ln(1.5)
 
-        # ---- Título: SOMENTE NOME DA ROTINA ----
+        # -------- CABEÇALHO --------
         nome_rot = self.sanitize_text(self.safe_get(dados, "nome")).upper()
-        titulo_full = nome_rot if nome_rot else ""
-
         pdf.set_fill_color(*BLUE)
         pdf.set_text_color(255, 255, 255)
         set_font(18, True)
-        pdf.cell(0, 14, titulo_full, ln=1, align="C", fill=True)
+        pdf.cell(0, 14, nome_rot or "ROTINA", ln=1, align="C", fill=True)
         pdf.set_text_color(*TEXT)
         pdf.ln(5)
 
-        # ---- Linha de Setor (centralizada e discreta) ----
         setor_val = self.sanitize_text(self.safe_get(dados, "setor"))
         if setor_val:
             pdf.set_text_color(80, 80, 80)
@@ -114,19 +109,23 @@ class RotinasModule:
             pdf.set_text_color(*TEXT)
             pdf.ln(2)
 
-        # ---- Seção Descrição ----
+        # -------- DESCRIÇÃO --------
         bar_title("Descrição")
 
-        descricao = self.safe_get(dados, "descricao")
-        left_margin = pdf.l_margin
+        descricao_raw = self.safe_get(dados, "descricao")
+        descricao = self._clean_html(descricao_raw)
+
         width = CONTENT_W
         line_h = 6.6
         padding = 1.8
         bullet_indent = 4.0
         usable_w = width - 2 * padding
+
         set_font(10, False)
 
-        wrapped_lines = self.build_wrapped_lines(descricao, pdf, usable_w, line_h, bullet_indent=bullet_indent)
+        wrapped_lines = self.build_wrapped_lines(
+            descricao, pdf, usable_w, line_h, bullet_indent=bullet_indent
+        )
 
         i = 0
         while i < len(wrapped_lines):
@@ -142,10 +141,11 @@ class RotinasModule:
             slice_lines = wrapped_lines[i:end]
 
             box_h = 2 * padding + len(slice_lines) * line_h
-            pdf.rect(left_margin, y_top, width, box_h)
+            pdf.rect(pdf.l_margin, y_top, width, box_h)
 
-            x_text_base = left_margin + padding
+            x_text_base = pdf.l_margin + padding
             y_text = y_top + padding
+
             for (ln_text, indent_mm) in slice_lines:
                 pdf.set_xy(x_text_base + indent_mm, y_text)
                 pdf.cell(usable_w - indent_mm, line_h, ln_text)
@@ -154,137 +154,135 @@ class RotinasModule:
             pdf.set_y(y_top + box_h)
             i = end
 
-            if i < len(wrapped_lines) and pdf.get_y() + line_h > pdf.page_break_trigger:
-                pdf.add_page()
-
-        # ---- Retorno seguro (sempre bytes) ----
+        # Resultado PDF
         result = pdf.output(dest="S")
-
-        # fpdf 1.x retorna str; fpdf2 retorna bytes; alguns ambientes podem gerar bytearray.
         if isinstance(result, str):
             result = result.encode("latin-1", "ignore")
         elif isinstance(result, bytearray):
             result = bytes(result)
 
-        if not isinstance(result, (bytes, bytearray)):
-            raise TypeError(f"PDF gerado em tipo inesperado: {type(result)}")
-
         return bytes(result)
 
-    # =========================
-    # Página Streamlit do módulo
-    # =========================
+    # ============================================================
+    # PÁGINA DO MÓDULO (COM EDITOR QUILL)
+    # ============================================================
     def page(self):
-        # Carrega banco de rotinas com tolerância
         try:
             rotinas_atuais, _ = self.db.load(force=True)
         except Exception:
             rotinas_atuais = []
+
         if not isinstance(rotinas_atuais, list):
             rotinas_atuais = []
         rotinas_atuais = list(rotinas_atuais)
 
-        # ---- Card de cabeçalho ----
         st.markdown(
-            """
-            <div class='card'>
-              <div class='card-title'>🗂️ Rotinas do Setor — Cadastro / Edição</div>
-            """,
-            unsafe_allow_html=True
+            "<div class='card'><div class='card-title'>🗂️ Rotinas do Setor — Cadastro / Edição</div>",
+            unsafe_allow_html=True,
         )
 
-        # Opções do select
         opcoes = ["+ Nova Rotina"] + [
-            f"{r.get('id')} — {self.safe_get(r, 'nome')}" for r in rotinas_atuais
+            f"{r.get('id')} — {self.safe_get(r, 'nome', 'Sem Nome')}" for r in rotinas_atuais
         ]
+
         escolha = st.selectbox("Selecione uma rotina para editar:", opcoes)
 
+        # Garantimos que dados_rotina seja ao menos um dict vazio
         if escolha == "+ Nova Rotina":
-            rotina_id = None
-            dados_rotina = None
+            rotina_id = "novo"
+            dados_rotina = {}
         else:
             rotina_id = escolha.split(" — ")[0]
             dados_rotina = next(
-                (r for r in rotinas_atuais if str(r.get('id')) == str(rotina_id)),
-                None
+                (r for r in rotinas_atuais if str(r.get("id")) == str(rotina_id)),
+                {}
             )
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # ---- Formulário: Nome, Setor, Descrição ----
-        form_key = f"form_rotina_{rotina_id}" if rotina_id else "form_rotina_nova"
+        # ============================================================
+        # FORMULÁRIO PRINCIPAL
+        # ============================================================
+        st.markdown("### Detalhes da Rotina")
 
-        with st.form(key=form_key):
-            nome = st.text_input("Nome da Rotina", value=self.safe_get(dados_rotina, "nome"))
+        nome = st.text_input("Nome da Rotina", value=self.safe_get(dados_rotina, "nome"))
 
-            # Campo SETOR — selectbox com as opções injetadas (fallback: input livre)
-            setor_atual = self.safe_get(dados_rotina, "setor")
-            if self.setores_opcoes:
-                if setor_atual not in self.setores_opcoes:
-                    setor_atual = self.setores_opcoes[0]
-                idx_setor = self.setores_opcoes.index(setor_atual) if setor_atual in self.setores_opcoes else 0
-                setor = st.selectbox("Setor", self.setores_opcoes, index=idx_setor)
-            else:
-                setor = st.text_input("Setor", value=setor_atual or "")
-
-            descricao = st.text_area(
-                "Descrição da Rotina",
-                value=self.safe_get(dados_rotina, "descricao"),
-                height=300,
-                help="Use parágrafos e bullets (•, -, ->). URLs quebram corretamente no PDF."
+        setor_atual = self.safe_get(dados_rotina, "setor")
+        if self.setores_opcoes:
+            if setor_atual not in self.setores_opcoes:
+                setor_atual = self.setores_opcoes[0]
+            idx_setor = (
+                self.setores_opcoes.index(setor_atual)
+                if setor_atual in self.setores_opcoes
+                else 0
             )
+            setor = st.selectbox("Setor", self.setores_opcoes, index=idx_setor)
+        else:
+            setor = st.text_input("Setor", value=setor_atual or "")
 
-            submit = st.form_submit_button("💾 Salvar Rotina")
+        # ============================================================
+        # 🖋️ EDITOR QUILL (mínimo compatível + HTML)
+        # ============================================================
+        st.markdown("##### 🖋️ Descrição Detalhada da Rotina")
 
-            if submit:
+        # Garante string (nunca None)
+        desc_inicial = str(self.safe_get(dados_rotina, "descricao", ""))
+
+        descricao_html = st_quill(
+            value=desc_inicial,
+            key=f"quill_editor_rotina_{rotina_id}",  # Key única por rotina
+            placeholder="Digite o passo a passo completo da rotina...",
+            html=True,  # >>> retorna HTML string (compatível com PDF)
+            # NÃO usar theme/modules/formats em versões antigas do streamlit-quill
+        )
+
+        # ============================================================
+        # SALVAR
+        # ============================================================
+        if st.button("💾 Salvar Rotina", use_container_width=True):
+            if not nome:
+                st.error("O nome da rotina é obrigatório.")
+            else:
+                # Se id for "novo", geramos um novo; senão mantemos o original
+                id_final = self.generate_id(rotinas_atuais) if rotina_id == "novo" else int(rotina_id)
+
                 novo_registro = {
+                    "id": id_final,
                     "nome": nome,
                     "setor": setor,
-                    "descricao": descricao,
+                    "descricao": descricao_html,  # HTML salvo no JSON
                 }
 
-                if rotina_id is None:
-                    novo_registro["id"] = self.generate_id(rotinas_atuais)
+                if rotina_id == "novo":
                     rotinas_atuais.append(novo_registro)
                 else:
-                    novo_registro["id"] = int(rotina_id)
                     for i, r in enumerate(rotinas_atuais):
                         if str(r.get("id")) == str(rotina_id):
                             rotinas_atuais[i] = novo_registro
                             break
 
                 if self.db.save(rotinas_atuais):
-                    st.success(f"✔ Rotina {novo_registro['id']} salva com sucesso!")
-                    # limpa caches locais e estado do Streamlit
+                    st.success("✔ Rotina salva com sucesso!")
                     self.db._cache_data = None
-                    self.db._cache_sha = None
-                    self.db._cache_time = 0.0
-                    st.session_state.clear()
                     time.sleep(1)
                     st.rerun()
 
-        # ---- Botão PDF (aparece quando uma rotina está selecionada) ----
+        # ============================================================
+        # DOWNLOAD PDF
+        # ============================================================
         if dados_rotina:
             try:
                 pdf_bytes = self.gerar_pdf_rotina(dados_rotina)
 
-                # Normalize para bytes (cinto e suspensório)
-                if isinstance(pdf_bytes, str):
-                    pdf_bytes = pdf_bytes.encode("latin-1", "ignore")
-                elif isinstance(pdf_bytes, bytearray):
-                    pdf_bytes = bytes(pdf_bytes)
-                if not isinstance(pdf_bytes, (bytes, bytearray)):
-                    raise TypeError(f"Tipo inesperado ao gerar PDF: {type(pdf_bytes)}")
-
-                # Nome de arquivo seguro
-                setor = self.safe_get(dados_rotina, "setor")
-                nome  = self.safe_get(dados_rotina, "nome")
-                fname = f"Rotina_{setor}_{nome}.pdf".strip() or "Rotina.pdf"
+                fname = (
+                    f"Rotina_{self.safe_get(dados_rotina,'setor')}_"
+                    f"{self.safe_get(dados_rotina,'nome')}.pdf"
+                )
                 fname = re.sub(r'[\\/:*?"<>|]+', "_", fname)[:120]
 
                 st.download_button(
                     label="📥 Baixar PDF da Rotina",
-                    data=bytes(pdf_bytes),
+                    data=pdf_bytes,
                     file_name=fname,
                     mime="application/pdf",
                     key=f"dl_pdf_rotina_{self.safe_get(dados_rotina, 'id')}",
@@ -294,53 +292,69 @@ class RotinasModule:
                 st.error("Falha ao preparar o PDF para download.")
                 st.exception(e)
 
-            # ==============================
-            # 🗑️ EXCLUSÃO PERMANENTE — ROTINA
-            # ==============================
+            # ============================================================
+            # EXCLUSÃO PERMANENTE
+            # ============================================================
             rotina_id_str = str(dados_rotina.get("id") or "")
+
             with st.expander("🗑️ Excluir rotina (permanente)", expanded=False):
                 st.warning(
-                    "Esta ação **não pode ser desfeita**. "
-                    "Para confirmar, digite o **ID** da rotina e clique em Excluir.",
-                    icon="⚠️"
+                    "Esta ação **não pode ser desfeita**. Para confirmar, "
+                    f"digite o **ID {rotina_id_str}** abaixo.",
+                    icon="⚠️",
                 )
+
                 confirm_val = st.text_input(
                     f"Confirmação: digite **{rotina_id_str}**",
-                    key=f"confirm_del_rot_{rotina_id_str}"
+                    key=f"confirm_del_rot_{rotina_id_str}",
                 )
 
                 can_delete = confirm_val.strip() == rotina_id_str and bool(rotina_id_str)
-                if st.button("Excluir rotina **permanentemente**", type="primary", disabled=not can_delete):
+
+                if st.button(
+                    "Excluir rotina **permanentemente**",
+                    type="primary",
+                    disabled=not can_delete,
+                ):
                     try:
                         def _update(data):
-                            # remove pelo ID (atomicidade via SHA locking na classe GitHubJSON)
-                            return [r for r in (data or []) if str(r.get("id")) != rotina_id_str]
+                            return [
+                                r for r in (data or [])
+                                if str(r.get("id")) != rotina_id_str
+                            ]
 
                         self.db.update(_update)
 
                         st.success(f"✔ Rotina {rotina_id_str} excluída com sucesso!")
 
-                        # Limpa caches/estado e recarrega
                         self.db._cache_data = None
                         self.db._cache_sha = None
                         self.db._cache_time = 0.0
                         st.session_state.clear()
                         time.sleep(1)
                         st.rerun()
+
                     except Exception as e:
                         st.error(f"Falha ao excluir rotina {rotina_id_str}: {e}")
 
-        # ---- Visualização do banco ----
-        st.markdown("<div class='card'><div class='card-title'>📋 Banco de Rotinas</div>", unsafe_allow_html=True)
+        # ============================================================
+        # VISUALIZAÇÃO DO BANCO DE ROTINAS
+        # ============================================================
+        st.markdown(
+            "<div class='card'><div class='card-title'>📋 Banco de Rotinas</div>",
+            unsafe_allow_html=True,
+        )
+
         if rotinas_atuais:
             df = pd.DataFrame(rotinas_atuais)
-
-            # Ordena colunas de forma amigável, sem quebrar compatibilidade com campos extras
             preferidas = ["id", "setor", "nome", "descricao"]
-            col_order = [c for c in preferidas if c in df.columns] + [c for c in df.columns if c not in preferidas]
+            col_order = (
+                [c for c in preferidas if c in df.columns]
+                + [c for c in df.columns if c not in preferidas]
+            )
             df = df[col_order]
-
             st.dataframe(df, use_container_width=True)
         else:
             st.info("⚠️ Nenhuma rotina cadastrada.")
+
         st.markdown("</div>", unsafe_allow_html=True)
