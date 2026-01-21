@@ -251,20 +251,23 @@ CSS_GLOBAL = f"""
 # 6. UTILITÁRIAS — Unicode + correção forte de espaços
 # ============================================================
 def fix_technical_spacing(txt: str) -> str:
-    """
-    Insere espaços em padrões colados (ex: 90dias -> 90 dias) 
-    e termos técnicos específicos da AMIL.
-    """
-    if not txt: return ""
-    
-    # 1. Ignora URLs para não quebrar links
-    if "://" in txt: return txt
+    if not txt:
+        return ""
 
-    # 2. Separa Número de Letra (Ex: 90dias -> 90 dias | DAS12:00 -> DAS 12:00)
+    # protege URLs individualmente
+    urls = {}
+    def _url_replacer(match):
+        key = f"__URL{len(urls)}__"
+        urls[key] = match.group(0)
+        return key
+
+    # isola URLs
+    txt = re.sub(r"https?://\S+", _url_replacer, txt)
+
+    # separa número/letra
     txt = re.sub(r"(\d)([A-Za-zÀ-ÖØ-öø-ÿ])", r"\1 \2", txt)
     txt = re.sub(r"([A-Za-zÀ-ÖØ-öø-ÿ])(\d)", r"\1 \2", txt)
-    
-    # 3. Dicionário de termos específicos que costumam colar
+
     correcoes = {
         r"serpediatria": "ser pediatria",
         r"depacote": "de pacote",
@@ -280,14 +283,19 @@ def fix_technical_spacing(txt: str) -> str:
         r"protocolosaparecerão": "protocolos aparecerão",
         r"Finalizarfaturamento": "Finalizar faturamento",
         r"PELASMARTKIDS": "PELA SMARTKIDS",
-        r"XMLnovamente": "XML novamente"
+        r"XMLnovamente": "XML novamente",
+        r"diasútil": "dias útil",
+        r"diasuteis": "dias úteis"
     }
-    
+
     for erro, corrigido in correcoes.items():
         txt = re.sub(erro, corrigido, txt, flags=re.IGNORECASE)
-        
-    return txt
 
+    # restaura URLs intactas
+    for key, url in urls.items():
+        txt = txt.replace(key, url)
+
+    return txt
 def sanitize_text(text: str) -> str:
     """
     Normaliza para NFC, limpa invisíveis e aplica correções técnicas de espaço.
