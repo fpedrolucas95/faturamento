@@ -1053,7 +1053,7 @@ def page_cadastro():
         )
     ui_card_end()
 
-    # --- CAMPOS DO FORMULÁRIO (Usando container em vez de form para melhor compatibilidade com Quill) ---
+    # --- CAMPOS DE DADOS (Container único) ---
     with st.container():
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -1099,84 +1099,46 @@ def page_cadastro():
         config_gerador = st.text_area("Configuração do Gerador XML", value=safe_get(dados_conv, "config_gerador"))
         doc_digitalizacao = st.text_area("Digitalização e Documentação", value=safe_get(dados_conv, "doc_digitalizacao"))
 
-    # --- SEÇÃO DO EDITOR DE TEXTO RICO ---
+    # --- SEÇÃO EDITOR DE TEXTO RICO (Blindado) ---
     st.markdown("### 📝 Observações Críticas")
-    initial_html = safe_get(dados_conv, "observacoes_html")
-    if not initial_html:
+    
+    # Preparação da string HTML
+    raw_html = safe_get(dados_conv, "observacoes_html")
+    if not raw_html:
         legacy_txt = safe_get(dados_conv, "observacoes")
-        initial_html = "".join([f"<p>{p}</p>" for p in legacy_txt.split("\n") if p])
+        if legacy_txt:
+            raw_html = "".join([f"<p>{p}</p>" for p in legacy_txt.split("\n") if p])
+        else:
+            raw_html = ""
+    
+    # Garantia de string para evitar TypeError
+    initial_html = str(raw_html)
 
     if st_quill is None:
-        observacoes_html = st.text_area("Observações (HTML)", value=initial_html, height=300, key=f"txt_{conv_id}")
+        observacoes_html = st.text_area("Observações (HTML)", value=initial_html, height=300, key=f"txt_area_{conv_id or 'new'}")
     else:
+        # A Key dinâmica baseada no conv_id resolve o erro de reset do componente
         observacoes_html = st_quill(
             value=initial_html,
             html=True,
-            key=f"quill_{conv_id or 'novo'}",
+            key=f"quill_editor_{conv_id or 'new'}",
             height=300
         )
 
-    # --- BOTÃO DE SALVAR FINAL ---
-    if st.button("💾 Salvar Alterações"):
-        # Lógica de processamento de dados (mesma que você já tinha)
+    # --- BOTÃO DE SALVAMENTO ---
+    if st.button("💾 Salvar Manual de Faturamento"):
+        if not nome:
+            st.error("O nome do convênio é obrigatório.")
+            return
+
+        # Gerar texto puro para busca e compatibilidade
+        try:
+            plain_obs = BeautifulSoup(observacoes_html, "html.parser").get_text("\n") if BeautifulSoup else sanitize_text(observacoes_html)
+        except:
+            plain_obs = str(observacoes_html)
+
         novo_registro = {
             "id": int(conv_id) if conv_id else generate_id(dados_atuais),
-            "nome": nome, "codigo": codigo, "empresa": empresa,
-            "sistema_utilizado": sistema, "site": site, "login": login,
-            "senha": senha, "prazo_retorno": retorno, "envio": envio,
-            "validade": validade, "xml": xml, "nf": nf,
-            "versao_xml": versao_xml, "fluxo_nf": fluxo_nf,
-            "config_gerador": config_gerador, "doc_digitalizacao": doc_digitalizacao,
-            "observacoes_html": observacoes_html,
-            "observacoes": BeautifulSoup(observacoes_html, "html.parser").get_text("\n") if BeautifulSoup else ""
-        }
-        
-        # Atualiza a lista
-        if conv_id is None:
-            dados_atuais.append(novo_registro)
-        else:
-            dados_atuais = [novo_registro if str(c.get("id")) == str(conv_id) else c for c in dados_atuais]
-        
-        if db.save(dados_atuais):
-            st.success("✔ Salvo com sucesso!")
-            time.sleep(1)
-            st.rerun()
-
-    # ============================================================
-    # RICH-TEXT (FORA DO FORM!)  — Aceita prints via Ctrl+V
-    # ============================================================
-    st.markdown("### 📝 Observações Críticas")
-
-    initial_html = safe_get(dados_conv, "observacoes_html")
-    if not initial_html:
-        legacy_txt = safe_get(dados_conv, "observacoes")
-        if legacy_txt:
-            parts = [f"<p>{sanitize_text(p)}</p>" for p in legacy_txt.split("\n") if sanitize_text(p)]
-            initial_html = "\n".join(parts)
-
-    # CORREÇÃO DA INDENTAÇÃO AQUI:
-    if st_quill is None:
-        st.info("Editor avançado não instalado... usando modo texto simples.")
-        observacoes_html = st.text_area(
-            "Observações Críticas (HTML)",
-            value=initial_html or "",
-            height=300,
-            key=f"area_txt_{conv_id or 'novo'}"
-        )
-    else:
-        observacoes_html = st_quill(
-            value=initial_html or "",
-            placeholder="Digite suas observações… (pode colar prints com Ctrl+V)",
-            html=True,
-            key=f"obs_quill_{conv_id or 'novo'}",
-            height=280,
-        )
-    # ============================================================
-    # PROCESSAMENTO DO SUBMIT
-    # ============================================================
-    if submit:
-
-        novo_registro = {
             "nome": nome,
             "codigo": codigo,
             "empresa": empresa,
@@ -1193,87 +1155,43 @@ def page_cadastro():
             "fluxo_nf": fluxo_nf,
             "config_gerador": config_gerador,
             "doc_digitalizacao": doc_digitalizacao,
+            "observacoes_html": observacoes_html,
+            "observacoes": plain_obs.strip()
         }
 
-        # Texto puro para compatibilidade
-        if observacoes_html:
-            if BeautifulSoup:
-                plain_obs = BeautifulSoup(observacoes_html, "html.parser").get_text("\n").strip()
-            else:
-                plain_obs = sanitize_text(re.sub(r"<[^>]+>", "", observacoes_html))
-        else:
-            plain_obs = safe_get(dados_conv, "observacoes")
-
-        novo_registro["observacoes_html"] = observacoes_html or ""
-        novo_registro["observacoes"] = plain_obs
-
-        # Novo ou edição
+        # Atualizar Banco
         if conv_id is None:
-            novo_registro["id"] = generate_id(dados_atuais)
             dados_atuais.append(novo_registro)
         else:
-            novo_registro["id"] = int(conv_id)
             for i, c in enumerate(dados_atuais):
                 if str(c.get("id")) == str(conv_id):
                     dados_atuais[i] = novo_registro
                     break
 
-        # Salvar no GitHub
         if db.save(dados_atuais):
-            st.success(f"✔ Convênio {novo_registro['id']} salvo com sucesso!")
-            db._cache_data = None
-            db._cache_sha = None
-            db._cache_time = 0.0
-            st.session_state.clear()
+            st.success("✔ Cadastro atualizado com sucesso!")
             time.sleep(1)
             st.rerun()
 
-    # ============================================================
-    # PDF + EXCLUSÃO (sem alterações)
-    # ============================================================
+    # --- BOTÃO PDF E EXCLUSÃO (Só aparece se estiver editando) ---
     if dados_conv:
-        try:
-            pdf_bytes = gerar_pdf(dados_conv)
-            nome_file = safe_get(dados_conv, "nome") or "Manual"
-            fname = re.sub(r'[\\/:*?"<>|]+', "_", f"Manual_{nome_file}.pdf")[:120]
+        st.markdown("---")
+        col_pdf, col_del = st.columns([1, 1])
+        
+        with col_pdf:
+            try:
+                pdf_bytes = gerar_pdf(dados_conv)
+                st.download_button("📥 Baixar PDF", data=pdf_bytes, file_name=f"Manual_{nome}.pdf", mime="application/pdf")
+            except:
+                st.warning("Não foi possível gerar o PDF.")
 
-            st.download_button(
-                "📥 Baixar PDF do Convênio",
-                data=pdf_bytes,
-                file_name=fname,
-                mime="application/pdf",
-            )
-        except Exception as e:
-            st.error("Falha ao preparar o PDF do convênio.")
-            st.exception(e)
-
-        with st.expander("🗑️ Excluir convênio (permanente)"):
-            st.warning(
-                "Esta ação **não pode ser desfeita**. "
-                "Digite o ID para confirmar."
-            )
-
-            conv_id_str = str(safe_get(dados_conv, "id"))
-            confirm_val = st.text_input(
-                f"Confirmação: digite **{conv_id_str}**",
-                key=f"confirm_del_{conv_id_str}"
-            )
-
-            if st.button("Excluir convênio permanentemente", disabled=(confirm_val != conv_id_str)):
-                try:
-                    def _upd(data):
-                        return [c for c in data if str(c.get("id")) != conv_id_str]
-
-                    db.update(_upd)
-                    st.success("Convênio excluído!")
-                    db._cache_data = None
-                    st.session_state.clear()
-                    time.sleep(1)
+        with col_del:
+            with st.expander("🗑️ Zona de Perigo"):
+                if st.button("Confirmar Exclusão Permanente"):
+                    def _delete(data):
+                        return [c for c in data if str(c.get("id")) != str(conv_id)]
+                    db.update(_delete)
                     st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao excluir: {e}")
-
-
 # ============================================================
 # 12. PÁGINAS — CONSULTA & VISUALIZAR BANCO
 # ============================================================
