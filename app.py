@@ -250,6 +250,10 @@ CSS_GLOBAL = f"""
 # ============================================================
 # 6. UTILITÁRIAS — Unicode + correção forte de espaços
 # ============================================================
+# ============================================================
+# 6. UTILITÁRIAS — Unicode + correção forte de espaços
+# ============================================================
+
 def fix_technical_spacing(txt: str) -> str:
     """
     Insere espaços em padrões colados (ex: 90dias -> 90 dias) 
@@ -257,11 +261,14 @@ def fix_technical_spacing(txt: str) -> str:
     """
     if not txt: return ""
     
-    # 1. Separa Número de Letra (Ex: 90dias -> 90 dias | DAS12:00 -> DAS 12:00)
+    # 1. Ignora URLs para não quebrar links
+    if "://" in txt: return txt
+
+    # 2. Separa Número de Letra (Ex: 90dias -> 90 dias | DAS12:00 -> DAS 12:00)
     txt = re.sub(r"(\d)([A-Za-zÀ-ÖØ-öø-ÿ])", r"\1 \2", txt)
     txt = re.sub(r"([A-Za-zÀ-ÖØ-öø-ÿ])(\d)", r"\1 \2", txt)
     
-    # 2. Corrige palavras grudadas específicas identificadas no seu PDF
+    # 3. Corrige palavras grudadas específicas identificadas no seu PDF
     correcoes = {
         r"serpediatria": "ser pediatria",
         r"depacote": "de pacote",
@@ -276,13 +283,32 @@ def fix_technical_spacing(txt: str) -> str:
         r"ofinanceiro": "o financeiro",
         r"protocolosaparecerão": "protocolos aparecerão",
         r"Finalizarfaturamento": "Finalizar faturamento",
-        r"PELASMARTKIDS": "PELA SMARTKIDS"
+        r"PELASMARTKIDS": "PELA SMARTKIDS",
+        r"noSisAmil": "no SisAmil",
+        r"XMLnovamente": "XML novamente"
     }
     
     for erro, corrigido in correcoes.items():
         txt = re.sub(erro, corrigido, txt, flags=re.IGNORECASE)
         
     return txt
+
+def sanitize_text(text: str) -> str:
+    if text is None: return ""
+    
+    # Normaliza Unicode
+    txt = unicodedata.normalize("NFC", str(text))
+    
+    # Converte espaços Unicode/Invisíveis em espaços normais
+    txt = re.sub(r"[\u00A0\u1680\u180E\u2000-\u200A\u202F\u205F\u3000]", " ", txt)
+    txt = re.sub(r"[\u200B-\u200F\u202A-\u202E\u2060-\u206F]", "", txt)
+    
+    # APLICA A CORREÇÃO DE ESPAÇAMENTO TÉCNICO
+    txt = fix_technical_spacing(txt)
+    
+    # Colapsa múltiplos espaços em um só
+    txt = re.sub(r"[ \t]+", " ", txt)
+    return txt.strip()
 
 def sanitize_text(text: str) -> str:
     if text is None: return ""
@@ -519,20 +545,16 @@ def build_wrapped_lines(text, pdf, usable_w, line_h, bullet_indent=4.0):
     lines_out = []
     if not text: return []
 
-    # Higieniza o texto completo
-    raw_text = sanitize_text(text)
-    
-    # Divide por linhas mantendo parágrafos
-    raw_lines = raw_text.split("\n")
+    # O sanitize_text aqui já chamará o fix_technical_spacing automaticamente
+    paragraphs = text.split('\n')
     bullet_re = re.compile(r"^\s*(?:[\u2022•\-–—\*]|->|→)\s*(.*)$")
 
-    for raw in raw_lines:
-        clean = raw.strip()
+    for p in paragraphs:
+        clean = sanitize_text(p)
         if not clean:
             lines_out.append(("", 0.0))
             continue
-
-        # Verifica se é lista (bullet)
+        
         m = bullet_re.match(clean)
         if m:
             content = m.group(1).strip()
@@ -545,7 +567,7 @@ def build_wrapped_lines(text, pdf, usable_w, line_h, bullet_indent=4.0):
                 lines_out.append((wline, 0.0))
 
     return lines_out
-
+    
 # ============================================================
 # 9. GERAÇÃO DO PDF — layout completo
 # ============================================================
