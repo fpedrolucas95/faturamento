@@ -899,6 +899,9 @@ def clean_html(raw_html):
 # ------------------------------------------------------------
 # MÓDULO DE CADASTRO COMPLETO
 # ------------------------------------------------------------
+# ------------------------------------------------------------
+# MÓDULO DE CADASTRO COMPLETO (REINTEGRADO XML/NF)
+# ------------------------------------------------------------
 def page_cadastro():
     from streamlit_quill import st_quill
     from streamlit_paste_button import paste_image_button
@@ -926,10 +929,11 @@ def page_cadastro():
 
     ui_card_end()
 
-    # Chave única para evitar conflitos de estado no Streamlit
     form_key = f"form_premium_{conv_id}" if conv_id else "form_premium_novo"
 
     with st.form(key=form_key):
+        # --- BLOCO 1: IDENTIFICAÇÃO ---
+        st.markdown("##### 🏢 Identificação e Acesso")
         col1, col2, col3 = st.columns(3)
 
         with col1:
@@ -946,56 +950,72 @@ def page_cadastro():
             senha = st.text_input("Senha", value=safe_get(dados_conv, "senha"))
 
         with col3:
+            sistema = st.selectbox("Sistema", SISTEMAS,
+                                 index=SISTEMAS.index(safe_get(dados_conv, "sistema_utilizado")) if safe_get(dados_conv, "sistema_utilizado") in SISTEMAS else 0)
+            retorno = st.text_input("Prazo Retorno", value=safe_get(dados_conv, "prazo_retorno"))
             envio = st.text_input("Prazo Envio", value=safe_get(dados_conv, "envio"))
-            validade = st.text_input("Validade", value=safe_get(dados_conv, "validade"))
+
+        st.markdown("---")
+
+        # --- BLOCO 2: REGRAS TÉCNICAS (XML E NF REINTEGRADOS) ---
+        st.markdown("##### ⚙️ Regras Técnicas (XML e Nota Fiscal)")
+        col_xml, col_nf, col_fluxo = st.columns([1, 1, 2])
+
+        with col_xml:
+            valor_xml = safe_get(dados_conv, "xml") or "Sim"
+            xml = st.radio("Envia XML?", OPCOES_XML, index=OPCOES_XML.index(valor_xml), horizontal=True)
+            
+            valor_versao = safe_get(dados_conv, "versao_xml")
             versao_xml = st.selectbox("Versão TISS", VERSOES_TISS,
-                                    index=VERSOES_TISS.index(safe_get(dados_conv, "versao_xml")) if safe_get(dados_conv, "versao_xml") in VERSOES_TISS else 0)
+                                    index=VERSOES_TISS.index(valor_versao) if valor_versao in VERSOES_TISS else 0)
+
+        with col_nf:
+            valor_nf = safe_get(dados_conv, "nf") or "Não"
+            nf = st.radio("Exige NF?", OPCOES_NF, index=OPCOES_NF.index(valor_nf), horizontal=True)
+            validade = st.text_input("Validade da Guia (Dias)", value=safe_get(dados_conv, "validade"))
+
+        with col_fluxo:
+            valor_fluxo = safe_get(dados_conv, "fluxo_nf") or OPCOES_FLUXO_NF[0]
+            fluxo_nf = st.selectbox("Fluxo da Nota Fiscal", OPCOES_FLUXO_NF,
+                                  index=OPCOES_FLUXO_NF.index(valor_fluxo) if valor_fluxo in OPCOES_FLUXO_NF else 0)
 
         st.markdown("---")
         
-        # --- EDITOR DE TEXTO RICO (QUILL) ---
-        st.markdown("### 🖋️ Observações Críticas e Regras")
+        # --- BLOCO 3: EDITOR RICO ---
+        st.markdown("##### 🖋️ Observações Críticas")
         observacoes_html = st_quill(
             value=safe_get(dados_conv, "observacoes"),
-            placeholder="Digite as regras detalhadas, use negrito, listas e cores...",
+            placeholder="Digite as regras detalhadas de faturamento aqui...",
             key=f"quill_{conv_id}"
         )
 
-        st.markdown("---")
-
-        # --- CAPTURA DE PRINT (CLIPBOARD) ---
-        st.markdown("### 📸 Print de Tela / Evidência")
+        # --- BLOCO 4: PRINT / IMAGEM ---
+        st.markdown("##### 📸 Print de Tela / Evidência")
         c_paste, c_preview = st.columns([1, 1])
         
         with c_paste:
-            st.info("Clique no botão abaixo e aperte **Ctrl+V** para colar um print.")
-            pasted_img = paste_image_button(
-                label="📋 Colar Imagem do Clipboard",
-                key=f"paste_btn_{conv_id}"
-            )
+            st.info("Clique no botão abaixo e cole (Ctrl+V) o print.")
+            pasted_img = paste_image_button(label="📋 Colar Imagem", key=f"paste_btn_{conv_id}")
         
-        # Lógica para manter a imagem atual ou atualizar com a colada
         img_b64_salva = safe_get(dados_conv, "print_b64")
         
         if pasted_img.image_data is not None:
-            # Se colou algo novo, mostra o preview e prepara para salvar
             with c_preview:
-                st.image(pasted_img.image_data, caption="Imagem Colada (Nova)", use_container_width=True)
+                st.image(pasted_img.image_data, caption="Nova Imagem", use_container_width=True)
             img_para_salvar = image_to_base64(pasted_img.image_data)
         elif img_b64_salva:
-            # Se não colou nada novo, mas já tinha imagem no banco
             with c_preview:
-                st.image(base64.b64decode(img_b64_salva), caption="Imagem atual no banco", use_container_width=True)
+                st.image(base64.b64decode(img_b64_salva), caption="Imagem Atual", use_container_width=True)
             img_para_salvar = img_b64_salva
         else:
             img_para_salvar = ""
 
         st.markdown("<br>", unsafe_allow_html=True)
-        submit = st.form_submit_button("💾 SALVAR ALTERAÇÕES COMPLETAS", use_container_width=True)
+        submit = st.form_submit_button("💾 SALVAR MANUAL COMPLETO", use_container_width=True)
 
         if submit:
             if not nome:
-                st.error("O nome do convênio é obrigatório.")
+                st.error("Nome do convênio é obrigatório.")
             else:
                 novo_reg = {
                     "id": int(conv_id) if conv_id else generate_id(dados_atuais),
@@ -1005,16 +1025,19 @@ def page_cadastro():
                     "site": site,
                     "login": login,
                     "senha": senha,
+                    "sistema_utilizado": sistema,
+                    "prazo_retorno": retorno,
                     "envio": envio,
                     "validade": validade,
+                    "xml": xml,
                     "versao_xml": versao_xml,
-                    "observacoes": observacoes_html,  # Salva o HTML do Editor
-                    "print_b64": img_para_salvar,     # Salva a imagem em Base64
-                    # Mantemos os campos que não estão no formulário simplificado para não perdê-los
-                    "sistema_utilizado": safe_get(dados_conv, "sistema_utilizado"),
-                    "xml": safe_get(dados_conv, "xml", "Sim"),
-                    "nf": safe_get(dados_conv, "nf", "Sim"),
-                    "fluxo_nf": safe_get(dados_conv, "fluxo_nf")
+                    "nf": nf,
+                    "fluxo_nf": fluxo_nf,
+                    "observacoes": observacoes_html,
+                    "print_b64": img_para_salvar,
+                    # Mantém campos antigos se existirem no banco para não perder histórico
+                    "config_gerador": safe_get(dados_conv, "config_gerador"),
+                    "doc_digitalizacao": safe_get(dados_conv, "doc_digitalizacao")
                 }
 
                 if conv_id is None:
@@ -1026,8 +1049,8 @@ def page_cadastro():
                             break
 
                 if db.save(dados_atuais):
-                    st.success("✔ Dados e imagens salvos com sucesso no GitHub!")
-                    time.sleep(1)
+                    st.success("✔ Dados atualizados com sucesso!")
+                    time.sleep(0.8)
                     st.rerun()
 
 
