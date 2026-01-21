@@ -605,20 +605,14 @@ def gerar_pdf(dados):
     # Título (barra azul) — SOMENTE NOME DO CONVÊNIO
     # --------------------------
     nome_conv = sanitize_text(safe_get(dados, "nome")).upper()
-    titulo_full = f"MANUAL: {nome_conv}" if nome_conv else "GUIA TÉCNICA"
-
     pdf.set_fill_color(*BLUE)
     pdf.set_text_color(255, 255, 255)
     apply_font(18, True)
-    pdf.cell(0, 14, titulo_full, ln=1, align="C", fill=True)
+    pdf.cell(0, 14, f"MANUAL: {nome_conv}" if nome_conv else "GUIA TÉCNICA", ln=1, align="C", fill=True)
     pdf.set_text_color(*TEXT)
     pdf.ln(5)
 
-    # --------------------------
-    # Seção 1 — COLUNA ÚNICA
-    # --------------------------
     bar_title("1. Dados de Identificação e Acesso")
-
     pares_unicos = [
         ("Empresa",  safe_get(dados, "empresa")),
         ("Código",   safe_get(dados, "codigo")),
@@ -628,8 +622,7 @@ def gerar_pdf(dados):
         ("Retorno",  safe_get(dados, "prazo_retorno")),
         ("Sistema",  safe_get(dados, "sistema_utilizado")),
     ]
-    one_column_info(pares_unicos, label_w=30, line_h=6.8, gap_y=1.6, val_size=10)
-    pdf.ln(2.0)
+    one_column_info(pares_unicos)
 
     # --------------------------
     # Tabela "2. CRONOGRAMA..." (igual ao print)
@@ -789,7 +782,8 @@ def gerar_pdf(dados):
     elif isinstance(result, bytearray):
         result = bytes(result)
 
-    if isinstance(result, str): result = result.encode("latin-1", "ignore")
+    if isinstance(result, str): 
+        result = result.encode("latin-1", "ignore")
     return bytes(result)
 
 
