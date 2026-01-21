@@ -37,6 +37,39 @@ class RotinasModule:
             setores_opcoes=SETORES_ROTINA,
         )
     """
+    def __init__(self, db_rotinas, sanitize_text, build_wrapped_lines, _pdf_set_fonts, generate_id, safe_get, primary_color, setores_opcoes, image_to_base64):
+        # ... (inits anteriores) ...
+        self.image_to_base64 = image_to_base64
+
+    def page(self):
+        # ... (seleção de rotina igual) ...
+
+        with st.form(key=form_key):
+            nome = st.text_input("Nome da Rotina", value=self.safe_get(dados_rotina, "nome"))
+            setor = st.selectbox("Setor", self.setores_opcoes, index=0)
+            
+            st.markdown("#### 📖 Instruções da Rotina")
+            descricao_rica = st_quill(
+                value=self.safe_get(dados_rotina, "descricao"),
+                key=f"quill_rot_{rotina_id}"
+            )
+
+            st.markdown("#### 🖼️ Print do Processo")
+            pasted_rot = paste_image_button("📋 Colar Print da Rotina", key=f"p_rot_{rotina_id}")
+            
+            img_rot_b64 = self.safe_get(dados_rotina, "print_rotina")
+            if pasted_rot.image_data:
+                img_rot_b64 = self.image_to_base64(pasted_rot.image_data)
+                st.image(pasted_rot.image_data, width=300)
+
+            if st.form_submit_button("💾 Salvar Rotina"):
+                novo = {
+                    "id": int(rotina_id) if rotina_id else self.generate_id(rotinas_atuais),
+                    "nome": nome,
+                    "setor": setor,
+                    "descricao": descricao_rica,
+                    "print_rotina": img_rot_b64
+                }
 
     def __init__(
         self,
