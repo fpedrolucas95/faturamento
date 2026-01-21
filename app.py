@@ -250,6 +250,7 @@ CSS_GLOBAL = f"""
 # ============================================================
 # 6. UTILITÁRIAS — Unicode + correção forte de espaços
 # ============================================================
+
 def sanitize_text(text: str) -> str:
     """
     Normaliza para NFC, converte espaços Unicode em espaço ASCII,
@@ -425,29 +426,30 @@ def _pdf_set_fonts(pdf: FPDF) -> str:
             pass
     return "Helvetica"
 
+
 def build_wrapped_lines(text, pdf, usable_w, line_h, bullet_indent=4.0):
     """
     Converte o texto de Observações em lista de (linha, indent_mm), preservando parágrafos
-    e bullets, e aplicando heurísticas para recuperar espaços tipicamente perdidos.
+    e bullets, e aplicando heurísticas para recuperar espaços tipicamente perdidos
+    sem mexer dentro de URLs.
     """
     lines_out = []
     raw_lines = (sanitize_text(text or "")).split("\n")
 
     bullet_re = re.compile(r"^\s*(?:[\u2022•\-–—\*]|->|→)\s*(.*)$")
 
-    # Heurísticas de reespaçamento (não-URL)
     def fix_common_spacing_heuristics(s: str) -> str:
         s0 = s
 
-        # URL inteira? Não altera (só deixa "Site: " fora da URL)
+        # Linha 'só URL'? (não altera)
         is_url_line = s0.strip().lower().startswith(("http://", "https://"))
-        contains_scheme = "://" in s0
+        contains_scheme = "://" in s0  # haverá tokens de URL
 
-        # 1) ":" sem espaço → ": "
+        # 1) ":" grudado → ": "
         if not is_url_line:
             s0 = re.sub(r":(?=\S)", ": ", s0)
 
-        # 2) Espaço entre dígito-letra e letra-dígito (90dias → 90 dias / DAS12 → DAS 12)
+        # 2) Dígito+Letra e Letra+Dígito → adiciona espaço (90dias → 90 dias / DAS12 → DAS 12)
         if not is_url_line and not contains_scheme:
             s0 = re.sub(r"(\d)([A-Za-zÀ-ÖØ-öø-ÿ])", r"\1 \2", s0)
             s0 = re.sub(r"([A-Za-zÀ-ÖØ-öø-ÿ])(\d)", r"\1 \2", s0)
@@ -455,31 +457,38 @@ def build_wrapped_lines(text, pdf, usable_w, line_h, bullet_indent=4.0):
         # 3) Espaço após bullet colado (•DRA. → • DRA.)
         s0 = re.sub(r"(•)(?=\S)", r"\1 ", s0)
 
-        # 4) Split entre minúscula + MAIÚSCULA grudadas (ex.: "daAmil" → "da Amil")
+        # 4) minúscula seguida de MAIÚSCULA (daAmil → da Amil)
         if not is_url_line:
             s0 = re.sub(r"([a-zà-ÿ])([A-ZÁ-Ú])", r"\1 \2", s0)
 
-        # 5) Espaço antes de "TUSS", "SisAmil", "Fhasso" quando grudados
+        # 5) Espaço antes de certas palavras quando grudadas (sem interferir em URLs)
         if not is_url_line:
-            s0 = re.sub(r"([A-Za-zÀ-ÖØ-öø-ÿ])(?=TUSS\b)", r"\1 ", s0, flags=re.IGNORECASE)
-            s0 = re.sub(r"([A-Za-zÀ-ÖØ-öø-ÿ])(?=SisAmil\b)", r"\1 ", s0, flags=re.IGNORECASE)
-            s0 = re.sub(r"([A-Za-zÀ-ÖØ-öø-ÿ])(?=Fhasso\b)", r"\1 ", s0, flags=re.IGNORECASE)
+            keywords = ["XML", "TUSS", "SisAmil", "Fhasso", "Faturamento", "Amil", "SMARTKIDS", "OK"]
+            s0 = re.sub(r"([A-Za-zÀ-ÖØ-öø-ÿ])(?=(" + "|".join(keywords) + r")\b)", r"\1 ", s0)
 
-        # 6) Correções específicas frequentes (case-insensitive), sem afetar URLs
-        if not is_url_line and not contains_scheme:
+        # 6) Correções pontuais frequentes (case-insensitive), fora de URL
+        if not is_url_line:
             fixes = {
-                r"\bparaenviar\b": "para enviar",
+                r"\bserpediatria\b": "ser pediatria",
+                r"\bdepacote\b": "de pacote",
+                r"\bPRAELA\b": "PRA ELA",
                 r"\bmaisatualizadas\b": "mais atualizadas",
                 r"\bordemalfabética\b": "ordem alfabética",
-                r"\bsófechar\b": "só fechar",
-                r"\bnovapágina\b": "nova página",
-                r"\bdeuerro\b": "deu erro",
+                r"\bparaenviar\b": "para enviar",
+                r"\bXMLnovamente\b": "XML novamente",
+                r"\bdofaturamento\b": "do faturamento",
+                r"\bdoprotocolo\b": "do protocolo",
+                r"\bepesquisa\b": "e pesquisa",
+                r"\bacrítica\b": "a crítica",
+                r"\bofaturamento\b": "o faturamento",
                 r"\bofinanceiro\b": "o financeiro",
-                r"\bfinalizarfaturamento\b": "Finalizar faturamento",
+                r"\bASFATURAS\b": "AS FATURAS",
+                r"\bnovapágina\b": "nova página",
+                r"\bACESSARSISAMIL\b": "ACESSAR SISAMIL",
+                r"\bsófechar\b": "só fechar",
+                r"\bdeuerro\b": "deu erro",
                 r"\bprotocolosaparecerão\b": "protocolos aparecerão",
-                r"\bdepacote\b": "de pacote",
-                r"\bdevido problemas\b": "devido a problemas",
-                r"\bpelasmartkids\b": "PELA SMARTKIDS",
+                r"\bFinalizarfaturamento\b": "Finalizar faturamento",
             }
             for pat, rep in fixes.items():
                 s0 = re.sub(pat, rep, s0, flags=re.IGNORECASE)
@@ -487,15 +496,13 @@ def build_wrapped_lines(text, pdf, usable_w, line_h, bullet_indent=4.0):
         return s0
 
     for raw in raw_lines:
-        # Linha em branco => separador de parágrafo
         if raw.strip() == "":
             lines_out.append(("", 0.0))
             continue
 
-        # Limpa espaços extras (ASCII), já mapeados em sanitize_text
         clean = re.sub(r"[ \t]+", " ", raw).strip()
 
-        # Detecta bullet
+        # Linha com bullet
         m = bullet_re.match(clean)
         if m:
             text_item = m.group(1).strip()
@@ -506,9 +513,8 @@ def build_wrapped_lines(text, pdf, usable_w, line_h, bullet_indent=4.0):
                 lines_out.append((wline, bullet_indent))
             continue
 
-        # Linha normal (não-bullet): aplica heurísticas
+        # Linha normal
         clean = fix_common_spacing_heuristics(clean)
-
         wrapped = wrap_text(clean, pdf, usable_w)
         for wline in wrapped:
             lines_out.append((wline, 0.0))
