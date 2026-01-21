@@ -1074,6 +1074,7 @@ rotinas_module = RotinasModule(
     generate_id=generate_id,
     safe_get=safe_get,
     primary_color=PRIMARY_COLOR,
+    setores_opcoes=SETORES_ROTINA,  
 )
 
 # ============================================================
