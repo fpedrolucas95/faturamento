@@ -3,6 +3,7 @@
 #  APP.PY — MANUAL DE FATURAMENTO (VERSÃO PREMIUM)
 #  ORGANIZADO • OTIMIZADO • SEGURO • COM ID ÚNICO
 #  - PDF Unicode (DejaVu)
+#  - "1. DADOS..." em COLUNA ÚNICA (um abaixo do outro)
 #  - "2. CRONOGRAMA..." igual ao print (header cinza + padding)
 #  - Observações Críticas com parágrafos + bullets
 # ============================================================
@@ -39,7 +40,7 @@ class GitHubJSON:
 
         # Cache ultra-curto para evitar GET múltiplos desnecessários
         self._cache_data = None
-        self._cache_sha = None
+               self._cache_sha = None
         self._cache_time = 0.0
 
     @property
@@ -456,9 +457,13 @@ def build_wrapped_lines(text, pdf, usable_w, line_h, bullet_indent=4.0):
         lines_out.pop()
     return lines_out
 
+# ============================================================
+# 9. GERAÇÃO DO PDF — layout completo
+# ============================================================
 def gerar_pdf(dados):
     """
-    Layout: título azul, Seção 1 (duas colunas),
+    Layout: título azul,
+    Seção 1 (COLUNA ÚNICA),
     Seção 2 (tabela 5 colunas idêntica ao print),
     e 'Observações Críticas' multipágina.
     """
@@ -488,48 +493,84 @@ def gerar_pdf(dados):
         pdf.cell(0, height, f" {sanitize_text(texto).upper()}", ln=1, fill=True)
         pdf.ln(1.5)
 
-    def label_value_heights(col_x, base_y, label, value, label_w, col_w, line_h=7, val_size=10):
-        label = sanitize_text(label)
-        value = sanitize_text(value)
-        usable = col_w - label_w
-
-        set_font(val_size, False)
-        lines = wrap_text(value, pdf, max(1, usable))
-        needed_h = max(1, len(lines)) * line_h
-
-        if base_y + needed_h > pdf.page_break_trigger:
-            pdf.add_page()
-            base_y = pdf.get_y()
-
-        set_font(10, True)
-        pdf.set_xy(col_x, base_y)
-        pdf.cell(label_w, line_h, f"{label}:")
-        set_font(val_size, False)
-
-        pdf.set_xy(col_x + label_w, base_y)
-        pdf.cell(usable, line_h, lines[0] if lines else "")
-        for i in range(1, len(lines)):
-            pdf.set_xy(col_x + label_w, base_y + i * line_h)
-            pdf.cell(usable, line_h, lines[i])
-
-        return needed_h
-
-    def two_column_info(pares_esq, pares_dir, gap=10, label_w=30, line_h=6.8):
-        col_w = (CONTENT_W - gap) / 2
-        xL = pdf.l_margin
-        xR = pdf.l_margin + col_w + gap
+    # === COLUNA ÚNICA: label à esquerda (largura fixa) + valor à direita (wrap) ===
+    def one_column_info(pares, label_w=28, line_h=6.8, gap_y=1.2, val_size=10):
+        """
+        Desenha pares ("Label", "Valor") em UMA coluna:
+        - label com largura fixa (label_w)
+        - valor ocupa (CONTENT_W - label_w)
+        - respeita quebra de página e quebra de linha (wrap_text)
+        """
+        x = pdf.l_margin
         y = pdf.get_y()
+        col_w = CONTENT_W
+        usable_w = col_w - label_w
 
-        max_rows = max(len(pares_esq), len(pares_dir))
-        for i in range(max_rows):
-            lblL, valL = pares_esq[i] if i < len(pares_esq) else ("", "")
-            lblR, valR = pares_dir[i] if i < len(pares_dir) else ("", "")
+        for (label, value) in pares:
+            label = sanitize_text(label)
+            value = sanitize_text(value)
 
-            hL = label_value_heights(xL, y, lblL, valL, label_w, col_w, line_h=line_h)
-            hR = label_value_heights(xR, y, lblR, valR, label_w, col_w, line_h=line_h)
-            y = max(pdf.get_y(), y + max(hL, hR))
+            # mede linhas do valor
+            set_font(val_size, False)
+            lines = wrap_text(value, pdf, max(1, usable_w))
+            needed_h = max(1, len(lines)) * line_h
+
+            # quebra de página preventiva
+            if y + needed_h > pdf.page_break_trigger:
+                pdf.add_page()
+                y = pdf.get_y()
+
+            # desenha label
+            set_font(10, True)
+            pdf.set_xy(x, y)
+            pdf.cell(label_w, line_h, f"{label}:")
+
+            # desenha primeira linha do valor
+            set_font(val_size, False)
+            pdf.set_xy(x + label_w, y)
+            pdf.cell(usable_w, line_h, lines[0] if lines else "")
+
+            # linhas seguintes (se houver)
+            for i in range(1, len(lines)):
+                pdf.set_xy(x + label_w, y + i * line_h)
+                pdf.cell(usable_w, line_h, lines[i])
+
+            # avança Y
+            y = y + needed_h + gap_y
 
         pdf.set_y(y)
+
+    # --------------------------
+    # Título (barra azul)
+    # --------------------------
+    titulo_nome = sanitize_text(safe_get(dados, "nome")).upper()
+    titulo_emp  = sanitize_text(safe_get(dados, "empresa")).upper()
+    titulo_full = f"GUIA TÉCNICA: {titulo_nome}" + (f" - {titulo_emp}" if titulo_emp else "")
+
+    pdf.set_fill_color(*BLUE)
+    pdf.set_text_color(255, 255, 255)
+    set_font(18, True)
+    pdf.cell(0, 14, titulo_full, ln=1, align="C", fill=True)
+    pdf.set_text_color(*TEXT)
+    pdf.ln(5)
+
+    # --------------------------
+    # Seção 1 — COLUNA ÚNICA
+    # --------------------------
+    bar_title("1. Dados de Identificação e Acesso")
+
+    pares_unicos = [
+        ("Empresa",  safe_get(dados, "empresa")),
+        ("Código",   safe_get(dados, "codigo")),
+        ("Portal",   safe_get(dados, "site")),
+        ("Senha",    safe_get(dados, "senha")),
+        ("Login",    safe_get(dados, "login")),
+        ("Retorno",  safe_get(dados, "prazo_retorno")),
+        ("Sistema",  safe_get(dados, "sistema_utilizado")),
+    ]
+    # label_w levemente maior (melhora alinhamento visual com labels curtos/longos)
+    one_column_info(pares_unicos, label_w=30, line_h=6.8, gap_y=1.6, val_size=10)
+    pdf.ln(2.0)
 
     # --------------------------
     # Tabela "2. CRONOGRAMA..." (igual ao print)
@@ -609,39 +650,6 @@ def gerar_pdf(dados):
             pdf.ln(row_h)
 
     # --------------------------
-    # Título (barra azul)
-    # --------------------------
-    titulo_nome = sanitize_text(safe_get(dados, "nome")).upper()
-    titulo_emp  = sanitize_text(safe_get(dados, "empresa")).upper()
-    titulo_full = f"GUIA TÉCNICA: {titulo_nome}" + (f" - {titulo_emp}" if titulo_emp else "")
-
-    pdf.set_fill_color(*BLUE)
-    pdf.set_text_color(255, 255, 255)
-    set_font(18, True)
-    pdf.cell(0, 14, titulo_full, ln=1, align="C", fill=True)
-    pdf.set_text_color(*TEXT)
-    pdf.ln(5)
-
-    # --------------------------
-    # Seção 1
-    # --------------------------
-    bar_title("1. Dados de Identificação e Acesso")
-
-    pares_esq = [
-        ("Empresa", safe_get(dados, "empresa")),
-        ("Portal",  safe_get(dados, "site")),
-        ("Login",   safe_get(dados, "login")),
-        ("Sistema", safe_get(dados, "sistema_utilizado")),
-    ]
-    pares_dir = [
-        ("Código",  safe_get(dados, "codigo")),
-        ("Senha",   safe_get(dados, "senha")),
-        ("Retorno", safe_get(dados, "prazo_retorno")),
-    ]
-    two_column_info(pares_esq, pares_dir, gap=10, label_w=30, line_h=6.8)
-    pdf.ln(2.5)
-
-    # --------------------------
     # Seção 2 — Cronograma (tabela como no print)
     # --------------------------
     bar_title("2. Cronograma e Regras Técnicas")
@@ -651,7 +659,7 @@ def gerar_pdf(dados):
     w2 = 35   # Validade
     w3 = 35   # XML / Versão
     w4 = 30   # Nota Fiscal
-    w5 = (pdf.w - pdf.l_margin - pdf.r_margin) - (w1 + w2 + w3 + w4)  # ~ A4 width restante
+    w5 = (pdf.w - pdf.l_margin - pdf.r_margin) - (w1 + w2 + w3 + w4)  # restante (~28mm)
     widths = [w1, w2, w3, w4, w5]
 
     headers = ["Prazo Envio", "Validade Guia", "XML / Versão", "Nota Fiscal", "Fluxo NF"]
@@ -660,8 +668,6 @@ def gerar_pdf(dados):
     xml_ver  = safe_get(dados, "versao_xml") or "—"
     xml_composto = f"{xml_flag} / {xml_ver}"
 
-    # DICA: se você quiser garantir a quebra "Envia XML" / "sem nota", pode gravar no banco com \n
-    # ex: "Envia XML\nsem nota". A função de wrap respeita quebras explícitas.
     row = [
         safe_get(dados, "envio"),      # ex. "Data de envio: 01 ao 05 dias útil"
         safe_get(dados, "validade"),   # "90"
@@ -669,8 +675,6 @@ def gerar_pdf(dados):
         safe_get(dados, "nf"),         # "Não"
         safe_get(dados, "fluxo_nf"),   # "Envia XML sem nota"
     ]
-
-    # Aparência: header_h=8, cell_h=6, pad=2 (igual ao print)
     table(headers, [row], widths, header_h=8.0, cell_h=6.0, pad=2.0)
     pdf.ln(2.0)
 
@@ -732,7 +736,7 @@ def gerar_pdf(dados):
     return result
 
 # ============================================================
-# 9. UI COMPONENTS
+# 10. UI COMPONENTS
 # ============================================================
 def ui_card_start(title: str):
     st.markdown(f"""
@@ -793,7 +797,7 @@ def ui_block_info(title: str, content: str):
     ui_card_end()
 
 # ============================================================
-# 10. PÁGINA — CADASTRO / EDIÇÃO DE CONVÊNIOS
+# 11. PÁGINA — CADASTRO / EDIÇÃO DE CONVÊNIOS
 # ============================================================
 def page_cadastro():
     dados_atuais, _ = db.load(force=True)
@@ -946,17 +950,14 @@ def page_cadastro():
         )
 
 # ============================================================
-# 11. PÁGINA — CONSULTA DE CONVÊNIOS
+# 12. PÁGINAS — CONSULTA & VISUALIZAR BANCO
 # ============================================================
 def page_consulta(dados_atuais):
     if not dados_atuais:
         st.info("Nenhum convênio cadastrado.")
         return
 
-    opcoes = sorted([
-        f"{safe_get(c,'id')} || {safe_get(c,'nome')}"
-        for c in dados_atuais
-    ])
+    opcoes = sorted([f"{safe_get(c,'id')} || {safe_get(c,'nome')}" for c in dados_atuais])
     escolha = st.selectbox("Selecione o convênio:", opcoes)
     conv_id = escolha.split(" || ")[0]
 
@@ -995,49 +996,29 @@ def page_consulta(dados_atuais):
 
     st.caption("Manual de Faturamento — Visualização Premium")
 
-# ============================================================
-# 12. PÁGINA — VISUALIZAR TODO O BANCO
-# ============================================================
 def page_visualizar_banco(dados_atuais):
     ui_card_start("📋 Banco de Dados Completo")
-
     if dados_atuais:
         df = pd.DataFrame(dados_atuais)
         st.dataframe(df, use_container_width=True)
     else:
         st.info("⚠️ Banco vazio.")
-
     ui_card_end()
 
 # ============================================================
-# 13. MAIN APP — ROTEAMENTO, CARREGAMENTO E ESTRUTURA FINAL
+# 13. MAIN
 # ============================================================
 def main():
-    st.set_page_config(
-        page_title="💼 Manual de Faturamento",
-        layout="wide"
-    )
-
-    # Carregar banco do GitHub
+    st.set_page_config(page_title="💼 Manual de Faturamento", layout="wide")
     dados_atuais, _ = db.load()
 
-    # Sidebar — Navegação
     st.sidebar.title("📚 Navegação")
-    menu = st.sidebar.radio(
-        "Selecione a página:",
-        [
-            "Cadastrar / Editar",
-            "Consulta de Convênios",
-            "Visualizar Banco"
-        ]
-    )
-
+    menu = st.sidebar.radio("Selecione a página:", ["Cadastrar / Editar", "Consulta de Convênios", "Visualizar Banco"])
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🔄 Atualizar Sistema")
     if st.sidebar.button("Recarregar"):
         st.rerun()
 
-    # Roteamento
     if menu == "Cadastrar / Editar":
         page_cadastro()
     elif menu == "Consulta de Convênios":
@@ -1045,7 +1026,6 @@ def main():
     elif menu == "Visualizar Banco":
         page_visualizar_banco(dados_atuais)
 
-    # Rodapé
     st.markdown(
         """
         <br><br>
@@ -1057,6 +1037,5 @@ def main():
         unsafe_allow_html=True
     )
 
-# Executar aplicação
 if __name__ == "__main__":
     main()
