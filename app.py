@@ -776,16 +776,26 @@ def gerar_pdf(dados):
         if i < len(wrapped_lines) and pdf.get_y() + line_h > pdf.page_break_trigger:
             pdf.add_page()
 
+    
     # --------------------------
     # Retorno seguro (bytes)
     # --------------------------
     result = pdf.output(dest="S")
-    if isinstance(result, str):        # FPDF 1.x
+
+    # fpdf 1.x: str | fpdf2: bytes | alguns ambientes: bytearray
+    if isinstance(result, str):
         try:
             result = result.encode("latin-1")
         except Exception:
             result = result.encode("latin-1", "ignore")
-    return result
+    elif isinstance(result, bytearray):
+        result = bytes(result)
+
+    if not isinstance(result, (bytes, bytearray)):
+        raise TypeError(f"PDF gerado em tipo inesperado: {type(result)}")
+
+    return bytes(result)
+
 
 # ============================================================
 # 10. UI COMPONENTS
