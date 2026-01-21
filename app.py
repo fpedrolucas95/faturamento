@@ -2,7 +2,7 @@
 # ============================================================
 #  APP.PY — MANUAL DE FATURAMENTO (VERSÃO PREMIUM)
 #  COLUNA ÚNICA NA SEÇÃO 1 • TABELA DA SEÇÃO 2 IGUAL AO PRINT
-#  OBSERVAÇÕES CRÍTICAS COM PARÁGRAFOS + BULLETS
+#  OBSERVAÇÕES CRÍTICAS COM PARÁGRAFOS + BULLETS E ESPAÇOS CORRIGIDOS
 #  PDF UNICODE (DejaVu) + WRAP DE URL SEM ESPAÇOS EXTRAS
 #  TÍTULO: SOMENTE NOME DO CONVÊNIO
 # ============================================================
@@ -194,7 +194,7 @@ OPCOES_NF = ["Sim", "Não"]
 OPCOES_FLUXO_NF = ["Envia XML sem nota", "Envia NF junto com o lote"]
 
 # ------------------------------------------------------------
-# 5. CSS GLOBAL + HEADER FIXO
+# 5. CSS GLOBAL + HEADER FIXO (aplicado dentro do main())
 # ------------------------------------------------------------
 CSS_GLOBAL = f"""
 <style>
@@ -246,22 +246,29 @@ CSS_GLOBAL = f"""
     <span class="header-title">💼 Manual de Faturamento</span>
 </div>
 """
-st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
 
 # ============================================================
-# 6. UTILITÁRIAS (Unicode + sanitização)
+# 6. UTILITÁRIAS (Unicode + sanitização com correção de espaços)
 # ============================================================
 def sanitize_text(text: str) -> str:
     """
-    Normaliza para NFC (caracteres compostos, ideal p/ PDF),
+    Normaliza para NFC, converte espaços Unicode em espaço ASCII,
     remove invisíveis/controle e retorna string segura.
     """
     if text is None:
         return ""
     txt = unicodedata.normalize("NFC", str(text))
-    # Remove zero-width e controles
+
+    # Converte todos os espaços Unicode (categoria Zs) para ' '
+    txt = re.sub(r"[\u00A0\u1680\u180E\u2000-\u200A\u202F\u205F\u3000]", " ", txt)
+
+    # Remove zero-width/direcionalidade e controles ASCII
     txt = re.sub(r"[\u200B-\u200F\u202A-\u202E\u2060-\u206F]", "", txt)
     txt = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", txt)
+
+    # Colapsa múltiplos espaços/tabs em um único espaço
+    txt = re.sub(r"[ \t]+", " ", txt)
+
     return txt.replace("\r", "").strip()
 
 def normalize(value):
@@ -308,7 +315,7 @@ def _split_token_preserving_delims(token: str):
             i += 1
             continue
         if i + 1 < len(parts) and re.fullmatch(r"[/?&=._-]", parts[i+1] or ""):
-            seg += parts[i+1]   # anexa o delimitador ao final
+            seg += parts[i+1]
             i += 2
         else:
             i += 1
@@ -351,7 +358,6 @@ def wrap_text(text, pdf, max_width):
                     if width(seg) <= max_width:
                         current = seg
                     else:
-                        # corta segmento grande
                         for piece in chunk_text(seg, max_width // 3 or 1):
                             if width(piece) > max_width and len(piece) > 1:
                                 piece = piece[:1]
@@ -397,7 +403,7 @@ def wrap_text(text, pdf, max_width):
     return lines
 
 # ============================================================
-# 8. PDF — fontes, tabela do CRONOGRAMA e OBSERVAÇÕES
+# 8. PDF — fontes, heurísticas e OBSERVAÇÕES com parágrafos/bullets
 # ============================================================
 def _pdf_set_fonts(pdf: FPDF) -> str:
     """
@@ -421,39 +427,69 @@ def _pdf_set_fonts(pdf: FPDF) -> str:
 
 def build_wrapped_lines(text, pdf, usable_w, line_h, bullet_indent=4.0):
     """
-    Converte o texto de Observações em uma lista de linhas já "embrulhadas",
-    preservando parágrafos e itens de lista com recuo.
-    Retorna lista de (linha, indent_mm).
+    Converte o texto de Observações em lista de (linha, indent_mm), preservando parágrafos
+    e bullets, e aplicando heurísticas mínimas para recuperar espaços tipicamente perdidos.
     """
     lines_out = []
-    raw_lines = sanitize_text(text or "").split("\n")
+    raw_lines = (sanitize_text(text or "")).split("\n")
+
     bullet_re = re.compile(r"^\s*(?:[\u2022•\-–—\*]|->|→)\s*(.*)$")
 
+    # Heurísticas de reespaçamento (não-URL)
+    def fix_common_spacing_heuristics(s: str) -> str:
+        s0 = s
+
+        # Linha que é claramente URL
+        is_url_line = s0.strip().lower().startswith(("http://", "https://"))
+        contains_scheme = "://" in s0
+
+        # 1) ":" sem espaço → ": "
+        if not is_url_line:
+            s0 = re.sub(r":(?=\S)", ": ", s0)
+
+        # 2) Espaços entre dígito e letra / letra e dígito (ex.: 90dias → 90 dias / DAS12 → DAS 12)
+        if not is_url_line and not contains_scheme:
+            s0 = re.sub(r"(\d)([A-Za-zÀ-ÖØ-öø-ÿ])", r"\1 \2", s0)
+            s0 = re.sub(r"([A-Za-zÀ-ÖØ-öø-ÿ])(\d)", r"\1 \2", s0)
+
+        # 3) Espaço após bullet colado (•DRA. → • DRA.)
+        s0 = re.sub(r"(•)(?=\S)", r"\1 ", s0)
+
+        return s0
+
     for raw in raw_lines:
+        # Linha em branco => separador de parágrafo
         if raw.strip() == "":
             lines_out.append(("", 0.0))
             continue
 
+        # Limpa espaços extras (ASCII), já mapeados em sanitize_text
         clean = re.sub(r"[ \t]+", " ", raw).strip()
 
+        # Detecta bullet
         m = bullet_re.match(clean)
         if m:
             text_item = m.group(1).strip()
+            text_item = fix_common_spacing_heuristics(text_item)
             bullet_prefix = "• "
             wrapped = wrap_text(bullet_prefix + text_item, pdf, usable_w - bullet_indent)
             for wline in wrapped:
                 lines_out.append((wline, bullet_indent))
             continue
 
+        # Linha normal (não-bullet): aplica heurísticas
+        clean = fix_common_spacing_heuristics(clean)
+
         wrapped = wrap_text(clean, pdf, usable_w)
         for wline in wrapped:
             lines_out.append((wline, 0.0))
 
-    # Remove blank lines redundantes no início/fim
+    # Remove blanks redundantes no início/fim
     while lines_out and lines_out[0][0] == "":
         lines_out.pop(0)
     while lines_out and lines_out[-1][0] == "":
         lines_out.pop()
+
     return lines_out
 
 # ============================================================
@@ -584,7 +620,7 @@ def gerar_pdf(dados):
         """
         # Cabeçalho
         set_font(10, True)
-        pdf.set_fill_color(242, 242, 242)   # cinza claro do header (como no print)
+        pdf.set_fill_color(242, 242, 242)   # cinza claro do header
         pdf.set_draw_color(180, 180, 180)   # borda suave
         pdf.set_line_width(0.2)
 
@@ -602,7 +638,6 @@ def gerar_pdf(dados):
         set_font(10, False)
 
         def _draw_header_again():
-            """Redesenha o cabeçalho ao quebrar página (mesma aparência)."""
             set_font(10, True)
             pdf.set_fill_color(242, 242, 242)
             pdf.set_draw_color(180, 180, 180)
@@ -642,7 +677,7 @@ def gerar_pdf(dados):
                 y_text = y_row + pad
                 for ln in lines:
                     pdf.set_xy(x_text, y_text)
-                    pdf.cell(widths[i] - 2*pad, cell_h, ln)  # corpo à esquerda
+                    pdf.cell(widths[i] - 2*pad, cell_h, ln)
                     y_text += cell_h
 
                 cx += widths[i]
@@ -817,7 +852,7 @@ def page_cadastro():
     else:
         conv_id = escolha.split(" — ")[0]
         dados_conv = next(
-            (c for c in dados_atuais if str(c.get("id")) == str(conv_id)),
+            (c for c in dados_atuais if str(c.get('id')) == str(conv_id)),
             None
         )
 
@@ -879,14 +914,21 @@ def page_cadastro():
             valor_versao = safe_get(dados_conv, "versao_xml")
             if valor_versao not in VERSOES_TISS:
                 valor_versao = VERSOES_TISS[0]
-            versao_xml = st.selectbox("Versão XML (TISS)", VERSOES_TISS,
-                                      index=VERSOES_TISS.index(valor_versao))
+            versao_xml = st.selectbox(
+                "Versão XML (TISS)",
+                VERSOES_TISS,
+                index=VERSOES_TISS.index(valor_versao)
+            )
+
         with colB:
             valor_fluxo = safe_get(dados_conv, "fluxo_nf")
             if valor_fluxo not in OPCOES_FLUXO_NF:
                 valor_fluxo = OPCOES_FLUXO_NF[0]
-            fluxo_nf = st.selectbox("Fluxo da Nota", OPCOES_FLUXO_NF,
-                                    index=OPCOES_FLUXO_NF.index(valor_fluxo))
+            fluxo_nf = st.selectbox(
+                "Fluxo da Nota",
+                OPCOES_FLUXO_NF,
+                index=OPCOES_FLUXO_NF.index(valor_fluxo)
+            )
 
         config_gerador = st.text_area("Configuração do Gerador XML", value=safe_get(dados_conv, "config_gerador"))
         doc_digitalizacao = st.text_area("Digitalização e Documentação", value=safe_get(dados_conv, "doc_digitalizacao"))
@@ -941,7 +983,7 @@ def page_cadastro():
                 st.rerun()
 
     # BOTÃO PDF
-    if 'dados_conv' in locals() and dados_conv:
+    if dados_conv:
         st.download_button(
             "📥 Baixar PDF do Convênio",
             gerar_pdf(dados_conv),
@@ -1006,14 +1048,19 @@ def page_visualizar_banco(dados_atuais):
     ui_card_end()
 
 # ============================================================
-# 13. MAIN
+# 13. MAIN — set_page_config vem ANTES de qualquer render
 # ============================================================
 def main():
     st.set_page_config(page_title="💼 Manual de Faturamento", layout="wide")
+    # Aplica CSS e header somente após set_page_config
+    st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
+
     dados_atuais, _ = db.load()
 
     st.sidebar.title("📚 Navegação")
-    menu = st.sidebar.radio("Selecione a página:", ["Cadastrar / Editar", "Consulta de Convênios", "Visualizar Banco"])
+    menu = st.sidebar.radio(
+        "Selecione a página:", ["Cadastrar / Editar", "Consulta de Convênios", "Visualizar Banco"]
+    )
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🔄 Atualizar Sistema")
     if st.sidebar.button("Recarregar"):
@@ -1039,3 +1086,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
