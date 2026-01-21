@@ -250,31 +250,77 @@ CSS_GLOBAL = f"""
 # ============================================================
 # 6. UTILITÁRIAS — Unicode + correção forte de espaços
 # ============================================================
-
-def sanitize_text(text: str) -> str:
-    """
-    Normaliza para NFC, converte espaços Unicode em espaço ASCII,
-    remove invisíveis/controle e retorna string segura.
-    """
-    if text is None:
+def ui_text(value):
+    if not value:
         return ""
-    txt = unicodedata.normalize("NFC", str(text))
+    return sanitize_text(value)
+    
+def fix_technical_spacing(txt: str) -> str:
+    if not txt:
+        return ""
 
-    # Converte TODOS os espaços Unicode (categoria Zs) para ' '
+    urls = {}
+
+    def _url_replacer(match):
+        key = f"\u0000{len(urls)}\u0000"
+        urls[key] = match.group(0)
+        return key
+
+    # 1️⃣ PROTEGE URLs PRIMEIRO
+    re.sub(r"https?://[^\s<>\"']+", _url_replacer, txt)
+    
+    # 7️⃣ casos técnicos
+    txt = re.sub(r"\b(dias)(úteis|útil)\b", r"\1 \2", txt, flags=re.IGNORECASE)
+    txt = re.sub(r"\b(sem)(nota|nf)\b", r"\1 \2", txt, flags=re.IGNORECASE)
+    txt = re.sub(r"(às)(\d)", r"\1 \2", txt, flags=re.IGNORECASE)
+    
+
+    # 2️⃣ BULLETS
+    txt = re.sub(r"([•\-–—])([^\s])", r"\1 \2", txt)
+
+    # 3️⃣ Número ↔ letra
+    txt = re.sub(r"(\d)([^\W\d_])", r"\1 \2", txt, flags=re.UNICODE)
+    txt = re.sub(r"([^\W\d_])(\d)", r"\1 \2", txt, flags=re.UNICODE)
+
+    # 4️⃣ minúscula → Maiúscula
+    txt = re.sub(r"([a-záéíóúãõç])([A-ZÁÉÍÓÚÃÕÇ])", r"\1 \2", txt)
+
+    # 5️⃣ sigla → palavra
+    txt = re.sub(r"([A-Z]{2,})([a-záéíóúãõç])", r"\1 \2", txt)
+
+    # 6️⃣ palavra → sigla
+    txt = re.sub(r"([a-záéíóúãõç])([A-Z]{2,})", r"\1 \2", txt)
+
+    # 8️⃣ RESTAURA URLs
+    for k, v in urls.items():
+        txt = txt.replace(k, v)
+
+    return txt
+    
+def sanitize_text(text: str) -> str:
+    if not text:
+        return ""
+
+    txt = str(text)
+
+    # 1️⃣ Normalização Unicode CORRETA
+    txt = unicodedata.normalize("NFKC", txt)
+
+    # 2️⃣ Converte espaços Unicode e invisíveis
     txt = re.sub(r"[\u00A0\u1680\u180E\u2000-\u200A\u202F\u205F\u3000]", " ", txt)
-
-    # Remove zero-width/direcionalidade e controles ASCII
     txt = re.sub(r"[\u200B-\u200F\u202A-\u202E\u2060-\u206F]", "", txt)
     txt = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", txt)
 
-    # Colapsa múltiplos espaços/tabs em um único espaço
+    # 3️⃣ Correção semântica e espaçamento técnico (ÚNICO lugar)
+    txt = fix_technical_spacing(txt)
+
+    # 4️⃣ Normalização de espaços
     txt = re.sub(r"[ \t]+", " ", txt)
 
     return txt.replace("\r", "").strip()
-
+    
 def normalize(value):
-    if not value:
-        return ""
+    if not value: return ""
     return sanitize_text(value).strip().lower()
 
 def generate_id(dados_atuais):
@@ -282,22 +328,19 @@ def generate_id(dados_atuais):
     for item in dados_atuais:
         try:
             id_val = int(item.get("id"))
-            if id_val > 0:
-                ids.append(id_val)
-        except Exception:
-            continue
+            if id_val > 0: ids.append(id_val)
+        except Exception: continue
     return max(ids) + 1 if ids else 1
 
-def safe_get(d: dict, key: str, default=""):
-    if not isinstance(d, dict):
+def safe_get(data, key, default=""):
+    if not isinstance(data, dict):
         return default
-    return sanitize_text(d.get(key, default))
+    return data.get(key, default) or ""
 
 # ============================================================
 # 7. WRAP DE TEXTO (URLs, palavras longas) + utilidades
 # ============================================================
 def chunk_text(text, size):
-    text = sanitize_text(text or "")
     safe_size = int(size) if size and size >= 1 else 1
     return [text[i:i+safe_size] for i in range(0, len(text), safe_size)]
 
@@ -328,12 +371,8 @@ def wrap_text(text, pdf, max_width):
     Quebra texto respeitando largura. Para tokens longos (URLs etc.),
     quebra por delimitadores SEM inserir espaços visíveis.
     """
-    text = sanitize_text(text)
     if not text:
         return [""]
-
-    # Colapsa espaços/tabs múltiplos em um único espaço (por linha)
-    text = re.sub(r"[ \t]+", " ", text)
 
     words = text.split(" ")
     lines, current = [], ""
@@ -427,120 +466,33 @@ def _pdf_set_fonts(pdf: FPDF) -> str:
     return "Helvetica"
 
 
-
 def build_wrapped_lines(text, pdf, usable_w, line_h, bullet_indent=4.0):
-    """
-    Converte o texto de Observações em lista de (linha, indent_mm), preservando parágrafos
-    e bullets, e aplicando heurísticas de espaçamento e pontuação sem mexer em URLs.
-    """
     lines_out = []
-    raw_lines = (sanitize_text(text or "")).split("\n")
+    if not text: return []
 
+    text = sanitize_text(text)  # ✅ UMA ÚNICA VEZ
+
+    paragraphs = text.split('\n')
     bullet_re = re.compile(r"^\s*(?:[\u2022•\-–—\*]|->|→)\s*(.*)$")
-
-    def fix_common_spacing_heuristics(s: str) -> str:
-        s0 = s
-
-        # Linha que é claramente URL? (não altera nada nela)
-        is_url_line = s0.strip().lower().startswith(("http://", "https://"))
-        contains_scheme = "://" in s0  # linha contém uma URL em algum ponto
-
-        # 1) ":" grudado após rótulos → ": "
-        if not is_url_line:
-            s0 = re.sub(r":(?=\S)", ": ", s0)
-
-        # 2) Tempo "22: 00" → "22:00"
-        if not is_url_line:
-            s0 = re.sub(r"(\d)\s*:\s*(\d{2})(?!\d)", r"\1:\2", s0)
-
-        # 3) Remover espaço antes de pontuação e garantir 1 espaço após , ;
-        if not is_url_line:
-            s0 = re.sub(r"\s+([,.;:!?])", r"\1", s0)      # ... espaço antes de ,.;:!? → remove
-            s0 = re.sub(r"([,;])(?!\s)", r"\1 ", s0)      # vírgula/; seguidos de letra → adiciona espaço
-
-        # 4) Espaços ao redor de "/" (fora de URL): "a/b" ou "a  /  b" → "a / b"
-        if not is_url_line and not contains_scheme:
-            s0 = re.sub(r"\s*/\s*", " / ", s0)
-
-        # 5) Inserir espaço em casos colados comuns (fora de URL)
-        if not is_url_line and not contains_scheme:
-            # dígito+letra e letra+dígito
-            s0 = re.sub(r"(\d)([A-Za-zÀ-ÖØ-öø-ÿ])", r"\1 \2", s0)  # 90dias → 90 dias
-            s0 = re.sub(r"([A-Za-zÀ-ÖØ-öø-ÿ])(\d)", r"\1 \2", s0)  # DAS12 → DAS 12
-
-            # minúscula seguida de MAIÚSCULA (daAmil → da Amil)
-            s0 = re.sub(r"([a-zà-ÿ])([A-ZÁ-Ú])", r"\1 \2", s0)
-
-            # palavras‑chave que costumam grudar
-            keywords = ["XML", "TUSS", "SisAmil", "Fhasso", "Faturamento", "Amil", "SMARTKIDS", "OK"]
-            s0 = re.sub(r"([A-Za-zÀ-ÖØ-öø-ÿ])(?=(" + "|".join(keywords) + r")\b)", r"\1 ", s0)
-
-            # "DRA.MADIA" → "DRA. MADIA"
-            s0 = re.sub(r"\b(DRA\.)\s*(?=[A-Za-zÀ-ÖØ-öø-ÿ])", r"\1 ", s0, flags=re.IGNORECASE)
-
-            # Correções pontuais (case-insensitive)
-            fixes = {
-                r"\bserpediatria\b": "ser pediatria",
-                r"\bdepacote\b": "de pacote",
-                r"\bPRAELA\b": "PRA ELA",
-                r"\bmaisatualizadas\b": "mais atualizadas",
-                r"\bordemalfabética\b": "ordem alfabética",
-                r"\bparaenviar\b": "para enviar",
-                r"\bXMLnovamente\b": "XML novamente",
-                r"\bdofaturamento\b": "do faturamento",
-                r"\bdoprotocolo\b": "do protocolo",
-                r"\bepesquisa\b": "e pesquisa",
-                r"\bacrítica\b": "a crítica",
-                r"\bofaturamento\b": "o faturamento",
-                r"\bofinanceiro\b": "o financeiro",
-                r"\bASFATURAS\b": "AS FATURAS",
-                r"\bnovapágina\b": "nova página",
-                r"\bACESSARSISAMIL\b": "ACESSAR SISAMIL",
-                r"\bsófechar\b": "só fechar",
-                r"\bdeuerro\b": "deu erro",
-                r"\bprotocolosaparecerão\b": "protocolos aparecerão",
-                r"\bFinalizarfaturamento\b": "Finalizar faturamento",
-            }
-            for pat, rep in fixes.items():
-                s0 = re.sub(pat, rep, s0, flags=re.IGNORECASE)
-
-        # 6) Comprimir espaços repetidos que possam ter surgido
-        s0 = re.sub(r"\s{2,}", " ", s0)
-        return s0
-
-    for raw in raw_lines:
-        # Linha em branco → mantém parágrafo
-        if raw.strip() == "":
+    
+    for p in paragraphs:
+        p = p.strip()
+        if not p:
             lines_out.append(("", 0.0))
             continue
-
-        clean = re.sub(r"[ \t]+", " ", raw).strip()
-
-        # Bullet?
-        m = bullet_re.match(clean)
+    
+        m = bullet_re.match(p)
         if m:
             content = m.group(1).strip()
-            content = fix_common_spacing_heuristics(content)
-            bullet_prefix = "• "
-            wrapped = wrap_text(bullet_prefix + content, pdf, usable_w - bullet_indent)
+            wrapped = wrap_text("• " + content, pdf, usable_w - bullet_indent)
             for wline in wrapped:
                 lines_out.append((wline, bullet_indent))
-            continue
-
-        # Linha normal
-        clean = fix_common_spacing_heuristics(clean)
-        wrapped = wrap_text(clean, pdf, usable_w)
-        for wline in wrapped:
-            lines_out.append((wline, 0.0))
-
-    # Remove blanks redundantes no início/fim
-    while lines_out and lines_out[0][0] == "":
-        lines_out.pop(0)
-    while lines_out and lines_out[-1][0] == "":
-        lines_out.pop()
-
+        else:
+            wrapped = wrap_text(p, pdf, usable_w)
+            for wline in wrapped:
+                lines_out.append((wline, 0.0))
     return lines_out
-
+    
 # ============================================================
 # 9. GERAÇÃO DO PDF — layout completo
 # ============================================================
@@ -574,7 +526,7 @@ def gerar_pdf(dados):
         pdf.ln(top_margin)
         pdf.set_fill_color(*GREY_BAR)
         set_font(12, True)
-        pdf.cell(0, height, f" {sanitize_text(texto).upper()}", ln=1, fill=True)
+        pdf.cell(0, height, f" {texto.upper()}", ln=1, fill=True)
         pdf.ln(1.5)
 
     # === COLUNA ÚNICA: label à esquerda (largura fixa) + valor à direita (wrap) ===
@@ -591,11 +543,12 @@ def gerar_pdf(dados):
         usable_w = col_w - label_w
 
         for (label, value) in pares:
-            label = sanitize_text(label)
-            value = sanitize_text(value)
+            label = label or ""
+            value = value or ""
 
             # mede linhas do valor
             set_font(val_size, False)
+            value = sanitize_text(value)
             lines = wrap_text(value, pdf, max(1, usable_w))
             needed_h = max(1, len(lines)) * line_h
 
@@ -704,7 +657,8 @@ def gerar_pdf(dados):
             max_lines = 1
             for i, val in enumerate(row):
                 content_w = max(1, widths[i] - 2*pad)
-                lines = wrap_text(sanitize_text(val), pdf, content_w)
+                val = sanitize_text(val or "")
+                lines = wrap_text(val or "", pdf, content_w)
                 wrapped_cols.append(lines)
                 max_lines = max(max_lines, len(lines))
 
@@ -822,7 +776,7 @@ def gerar_pdf(dados):
 def ui_card_start(title: str):
     st.markdown(f"""
         <div class='card'>
-            <div class='card-title'>{sanitize_text(title)}</div>
+            <div class='card-title'>{ui_text(title)}</div>
     """, unsafe_allow_html=True)
 
 def ui_card_end():
@@ -840,7 +794,7 @@ def ui_section_title(text: str):
             border-radius:10px;
             font-size:26px;
             font-weight:700;">
-            {sanitize_text(text).upper()}
+            {ui_text(text).upper()}
         </div>
         """,
         unsafe_allow_html=True
@@ -850,8 +804,8 @@ def ui_info_line(label: str, value: str):
     st.markdown(
         f"""
         <div style="margin:6px 0; font-size:15px; line-height:1.5;">
-            <strong>{sanitize_text(label)}:</strong>
-            <span style="color:{TEXT_DARK};"> {sanitize_text(value)} </span>
+            <strong>{ui_text(label)}:</strong>
+            <span>{ui_text(value)}</span>
         </div>
         """,
         unsafe_allow_html=True
