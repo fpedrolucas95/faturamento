@@ -1009,8 +1009,8 @@ def page_cadastro():
                 time.sleep(1)
                 st.rerun()
 
-    
-    # BOTÃO PDF
+
+        # BOTÃO PDF
         if dados_conv:
             st.download_button(
                 "📥 Baixar PDF do Convênio",
@@ -1049,6 +1049,24 @@ def page_cadastro():
                         def _update(data):
                             # remove o registro cujo id == conv_id_str
                             return [c for c in (data or []) if str(c.get("id")) != conv_id_str]
+    
+                        # Atualiza no GitHub de forma atômica (SHA locking)
+                        db.update(_update)
+    
+                        st.success(f"✔ Convênio {conv_id_str} excluído com sucesso!")
+    
+                        # Limpa caches e estado da UI; recarrega a app
+                        db._cache_data = None
+                        db._cache_sha = None
+                        db._cache_time = 0.0
+                        st.session_state.clear()
+                        time.sleep(1)
+                        st.rerun()
+    
+                    except Exception as e:
+                        st.error(f"Falha ao excluir convênio {conv_id_str}: {e}")
+    
+    
 
 
 # ============================================================
