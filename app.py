@@ -536,25 +536,39 @@ def gerar_pdf(dados):
     pdf.add_page()
 
     BLUE = (31, 73, 125)
-    GREY_BAR = (230, 230, 230)   # barra de seção
+    GREY_BAR = (230, 230, 230)
     TEXT = (0, 0, 0)
     CONTENT_W = pdf.w - pdf.l_margin - pdf.r_margin
-    FONT = _pdf_set_fonts(pdf)
+
+    # 3. CARREGAR E ATIVAR FONTE IMEDIATAMENTE (Essencial para build_wrapped_lines)
+    FONT_FAMILY = _pdf_set_fonts(pdf)
+    pdf.set_font(FONT_FAMILY, '', 10) # <--- Ativa a fonte para cálculos de largura
     
+    # 4. Definições de medidas
     line_h = 6.6
     padding = 1.8
     bullet_indent = 4.0
     usable_w = CONTENT_W - 2 * padding
 
+    # 5. Processamento do texto rico (Quill/HTML)
     obs_text_raw = safe_get(dados, "observacoes")
-    obs_text = clean_html(obs_text_raw) # ✅ Remove as tags HTML antes de processar as linhas do PDF
+    obs_text = clean_html(obs_text_raw) 
+    
+    # Agora build_wrapped_lines não dará erro porque a fonte está setada no pdf
     wrapped_lines = build_wrapped_lines(obs_text, pdf, usable_w, line_h, bullet_indent=bullet_indent)
 
     # ---------- Helpers ----------
+    def apply_font(size=10, bold=False):
+        style = "B" if bold else ""
+        try:
+            pdf.set_font(FONT_FAMILY, style, size)
+        except:
+            pdf.set_font("Helvetica", style, size)
+            
     def bar_title(texto, top_margin=3, height=8):
         pdf.ln(top_margin)
         pdf.set_fill_color(*GREY_BAR)
-        set_font(12, True)
+        apply_font(12, True)
         pdf.cell(0, height, f" {texto.upper()}", ln=1, fill=True)
         pdf.ln(1.5)
 
@@ -614,7 +628,7 @@ def gerar_pdf(dados):
 
     pdf.set_fill_color(*BLUE)
     pdf.set_text_color(255, 255, 255)
-    set_font(18, True)
+    apply_font(18, True)
     pdf.cell(0, 14, titulo_full, ln=1, align="C", fill=True)
     pdf.set_text_color(*TEXT)
     pdf.ln(5)
@@ -749,44 +763,32 @@ def gerar_pdf(dados):
     # Observações Críticas — multipágina (com parágrafos + bullets)
     # --------------------------
     bar_title("Observações Críticas")
+    apply_font(10, False)
 
-    obs_text = safe_get(dados, "observacoes")
-    left_margin = pdf.l_margin
-    width = CONTENT_W
-    line_h = 6.6
-    padding = 1.8
-    bullet_indent = 4.0
-
-    usable_w = width - 2 * padding
-    set_font(10, False)
-
-    wrapped_lines = build_wrapped_lines(obs_text, pdf, usable_w, line_h, bullet_indent=bullet_indent)
-
-    i = 0
-    while i < len(wrapped_lines):
-        y_top = pdf.get_y()
-        space = pdf.page_break_trigger - y_top
-        avail_h = max(0.0, space - 2 * padding - 0.5)
-        lines_per_page = int(avail_h // line_h) if avail_h > 0 else 0
-        if lines_per_page <= 0:
+    idx = 0
+    while idx < len(wrapped_lines):
+        y_curr = pdf.get_y()
+        espaco_livre = pdf.page_break_trigger - y_curr
+        linhas_possiveis = int((espaco_livre - 2 * padding) // line_h)
+        
+        if linhas_possiveis <= 0:
             pdf.add_page()
+            apply_font(10, False)
             continue
 
-        end = min(len(wrapped_lines), i + lines_per_page)
-        slice_lines = wrapped_lines[i:end]
-
-        box_h = 2 * padding + len(slice_lines) * line_h
-        pdf.rect(left_margin, y_top, width, box_h)
-
-        x_text_base = left_margin + padding
-        y_text = y_top + padding
-        for (ln_text, indent_mm) in slice_lines:
-            pdf.set_xy(x_text_base + indent_mm, y_text)
-            pdf.cell(usable_w - indent_mm, line_h, ln_text)
-            y_text += line_h
-
-        pdf.set_y(y_top + box_h)
-        i = end
+        fim = min(len(wrapped_lines), idx + linhas_possiveis)
+        chunk = wrapped_lines[idx:fim]
+        box_h = 2 * padding + len(chunk) * line_h
+        
+        pdf.rect(pdf.l_margin, y_curr, CONTENT_W, box_h)
+        y_txt = y_curr + padding
+        for (txt, ind) in chunk:
+            pdf.set_xy(pdf.l_margin + padding + ind, y_txt)
+            pdf.cell(usable_w - ind, line_h, txt)
+            y_txt += line_h
+        
+        pdf.set_y(y_curr + box_h)
+        idx = fim
 
         if i < len(wrapped_lines) and pdf.get_y() + line_h > pdf.page_break_trigger:
             pdf.add_page()
@@ -806,9 +808,7 @@ def gerar_pdf(dados):
     elif isinstance(result, bytearray):
         result = bytes(result)
 
-    if not isinstance(result, (bytes, bytearray)):
-        raise TypeError(f"PDF gerado em tipo inesperado: {type(result)}")
-
+    if isinstance(result, str): result = result.encode("latin-1", "ignore")
     return bytes(result)
 
 
