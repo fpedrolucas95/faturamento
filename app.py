@@ -1138,13 +1138,17 @@ def page_cadastro():
                 parts = [f"<p>{sanitize_text(p)}</p>" for p in legacy_txt.split("\n") if sanitize_text(p)]
                 initial_html = "\n".join(parts)
 
+
+        # apenas placeholder dentro do FORM
+        submit = st.form_submit_button("💾 Salvar Dados")
+        
+        # editor REAL fora do form
         if st_quill is None:
-            st.info("Para colar prints diretamente no texto, instale `streamlit-quill` (requirements.txt). Usando editor simples por enquanto.")
+            st.info("Editor avançado não instalado...")
             observacoes_html = st.text_area(
                 "Observações Críticas (HTML)",
                 value=initial_html or "",
-                height=300,
-                help="Campo em HTML. Com o `streamlit-quill` você poderá colar prints."
+                height=300
             )
         else:
             observacoes_html = st_quill(
@@ -1154,10 +1158,10 @@ def page_cadastro():
                 key=f"obs_quill_{conv_id or 'novo'}",
                 height=280,
             )
-
-        submit = st.form_submit_button("💾 Salvar Dados")
+        
 
         if submit:
+            novo_registro["observacoes_html"] = observacoes_html
             novo_registro = {
                 "nome": nome,
                 "codigo": codigo,
