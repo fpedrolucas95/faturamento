@@ -250,6 +250,11 @@ CSS_GLOBAL = f"""
 # ============================================================
 # 6. UTILITÁRIAS — Unicode + correção forte de espaços
 # ============================================================
+def ui_text(value):
+    if not value:
+        return ""
+    return sanitize_text(value)
+    
 def fix_technical_spacing(txt: str) -> str:
     if not txt:
         return ""
