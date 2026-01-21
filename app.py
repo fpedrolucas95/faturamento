@@ -54,36 +54,58 @@ class GitHubJSON:
     # ============================
     # LOAD — Leitura segura (200ms)
     # ============================
+    
     def load(self, force=False):
         now = time.time()
         if not force and self._cache_data is not None:
             if (now - self._cache_time) < 0.2:  # cache curtíssimo
                 return self._cache_data, self._cache_sha
-
+    
         url = self.API_URL.format(owner=self.owner, repo=self.repo, path=self.path)
         r = requests.get(url, headers=self.headers, params={"ref": self.branch})
-
+    
         if r.status_code == 404:
             # Arquivo não existe — retorna base vazia
             self._cache_data = []
             self._cache_sha = None
             self._cache_time = now
             return [], None
-
+    
         if r.status_code != 200:
             raise Exception(f"GitHub GET error: {r.status_code} - {r.text}")
-
+    
         body = r.json()
         sha = body.get("sha")
-
-        decoded = base64.b64decode(body["content"]).decode("utf-8")
-        data = json.loads(decoded)
-
+    
+        # Pode vir vazio; garante string
+        decoded_b64 = body.get("content") or ""
+        decoded = base64.b64decode(decoded_b64).decode("utf-8")
+    
+        # Auto-healing p/ arquivo vazio ou inválido
+        if not decoded.strip():
+            data = []
+        else:
+            try:
+                data = json.loads(decoded)
+            except json.JSONDecodeError:
+                # remove possíveis BOMs e tenta de novo
+                decoded = decoded.lstrip("\ufeff")
+                try:
+                    data = json.loads(decoded)
+                except json.JSONDecodeError:
+                    # fallback seguro: considera base vazia
+                    data = []
+    
+        # Garante tipo lista (se vier dict por engano)
+        if not isinstance(data, list):
+            data = []
+    
         self._cache_data = data
         self._cache_sha = sha
         self._cache_time = now
-
+    
         return data, sha
+
 
     # ============================================
     # SAVE — Salvamento atômico com SHA locking
