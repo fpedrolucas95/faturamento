@@ -1,18 +1,5 @@
-
-# Core
-streamlit==1.24.0
-
-# Editor Rich Text (Quill) — versões disponíveis no PyPI para este runtime
+streamlit>=1.41.0
 streamlit-quill==0.0.3
-
-# HTTP
-requests==2.31.0
-
-# HTML parsing
-beautifulsoup4==4.12.2
-
-# Imagens
-Pillow==10.2.0
-
-# PDF (sua base usa FPDF 1.x)
-fpdf==1.7.2
+requests==2.32.3
+beautifulsoup4==4.12.3
+Pillow>=11.0.0
