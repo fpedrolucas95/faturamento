@@ -268,6 +268,12 @@ def fix_technical_spacing(txt: str) -> str:
 
     # 1️⃣ PROTEGE URLs PRIMEIRO
     txt = re.sub(r"https?://\S+", _url_replacer, txt)
+    
+    # 7️⃣ casos técnicos
+    txt = re.sub(r"\b(dias)(úteis|útil)\b", r"\1 \2", txt, flags=re.IGNORECASE)
+    txt = re.sub(r"\b(sem)(nota|nf)\b", r"\1 \2", txt, flags=re.IGNORECASE)
+    txt = re.sub(r"(às)(\d)", r"\1 \2", txt, flags=re.IGNORECASE)
+    
 
     # 2️⃣ BULLETS
     txt = re.sub(r"([•\-–—])([^\s])", r"\1 \2", txt)
@@ -284,11 +290,6 @@ def fix_technical_spacing(txt: str) -> str:
 
     # 6️⃣ palavra → sigla
     txt = re.sub(r"([a-záéíóúãõç])([A-Z]{2,})", r"\1 \2", txt)
-
-    # 7️⃣ casos técnicos
-    txt = re.sub(r"\b(dias)(úteis|útil)\b", r"\1 \2", txt, flags=re.IGNORECASE)
-    txt = re.sub(r"\b(sem)(nota|nf)\b", r"\1 \2", txt, flags=re.IGNORECASE)
-    txt = re.sub(r"(às)(\d)", r"\1 \2", txt, flags=re.IGNORECASE)
 
     # 8️⃣ RESTAURA URLs
     for k, v in urls.items():
