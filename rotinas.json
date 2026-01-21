@@ -1,9 +1,1 @@
-ROTINAS_FILE_PATH = "rotinas.json"
-
-db_rotinas = GitHubJSON(
-    token=GITHUB_TOKEN,
-    owner=REPO_OWNER,
-    repo=REPO_NAME,
-    path=ROTINAS_FILE_PATH,
-    branch=BRANCH
-)
+[]
