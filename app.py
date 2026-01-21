@@ -251,7 +251,7 @@ CSS_GLOBAL = f"""
 # 6. UTILITÁRIAS — Unicode + correção forte de espaços
 # ============================================================
 def fix_technical_spacing(txt: str) -> str:
-     if not txt:
+    if not txt:
         return ""
 
     # ⛔ evita reaplicar se já passou pela função
@@ -303,13 +303,14 @@ def fix_technical_spacing(txt: str) -> str:
 
     return txt
 def sanitize_text(text: str) -> str:
-    """
-    Normaliza para NFC, limpa invisíveis e aplica correções técnicas de espaço.
-    """
-    if text is None: return ""
+    if text is None:
+        return ""
+
+    txt = str(text)
+
     # garante espaço após bullet
     txt = re.sub(r"([•\-–—])([^\s])", r"\1 \2", txt)
-
+    
     # Normaliza Unicode
     txt = unicodedata.normalize("NFC", str(text))
     
