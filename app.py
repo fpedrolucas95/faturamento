@@ -471,46 +471,87 @@ def gerar_pdf(dados):
 
         pdf.set_y(y)
 
-    def table(headers, rows, widths, header_h=8, cell_h=7):
+    
+def table(headers, rows, widths, header_h=8.0, cell_h=6.0, pad=2.0):
+    """
+    Tabela com:
+    - Cabeçalho cinza claro, textos centralizados
+    - Corpo com padding interno (pad) e quebra suave por coluna
+    - Bordas padrão, redesenha cabeçalho ao quebrar página
+    """
+    # Aparência do cabeçalho (como no print)
+    set_font(10, True)
+    pdf.set_fill_color(242, 242, 242)   # cinza claro do header
+    pdf.set_draw_color(180, 180, 180)   # borda suave
+    pdf.set_line_width(0.2)
+
+    # Desenha cabeçalho
+    x_base = pdf.l_margin
+    y_top  = pdf.get_y()
+    cur_x  = x_base
+
+    for i, head in enumerate(headers):
+        pdf.set_xy(cur_x, y_top)
+        pdf.cell(widths[i], header_h, sanitize_text(head), border=1, align="C", fill=True)
+        cur_x += widths[i]
+    pdf.ln(header_h)
+
+    # Corpo (linhas)
+    set_font(10, False)
+
+    def _draw_header_again():
+        """Redesenha o cabeçalho ao quebrar página (mesma aparência)."""
         set_font(10, True)
-        x0 = pdf.get_x()
-        y0 = pdf.get_y()
-        for i, head in enumerate(headers):
-            pdf.set_xy(x0 + sum(widths[:i]), y0)
-            pdf.cell(widths[i], header_h, sanitize_text(head), border=1, align="C")
+        pdf.set_fill_color(242, 242, 242)
+        pdf.set_draw_color(180, 180, 180)
+        pdf.set_line_width(0.2)
+
+        xh = pdf.l_margin
+        yh = pdf.get_y()
+        cx = xh
+        for j, h in enumerate(headers):
+            pdf.set_xy(cx, yh)
+            pdf.cell(widths[j], header_h, sanitize_text(h), border=1, align="C", fill=True)
+            cx += widths[j]
         pdf.ln(header_h)
-
         set_font(10, False)
-        for row in rows:
-            wrapped_cols = []
-            max_lines = 1
-            for i, val in enumerate(row):
-                val = sanitize_text(val)
-                lines = wrap_text(val, pdf, max(1, widths[i]-2))
-                wrapped_cols.append(lines)
-                max_lines = max(max_lines, len(lines))
-            row_h = max_lines * cell_h
 
-            if pdf.get_y() + row_h > pdf.page_break_trigger:
-                pdf.add_page()
-                set_font(10, True)
-                xh = pdf.get_x()
-                yh = pdf.get_y()
-                for i, head in enumerate(headers):
-                    pdf.set_xy(xh + sum(widths[:i]), yh)
-                    pdf.cell(widths[i], header_h, sanitize_text(head), border=1, align="C")
-                pdf.ln(header_h)
-                set_font(10, False)
+    for row in rows:
+        # wrap por coluna com largura útil considerando o pad interno
+        wrapped_cols = []
+        max_lines = 1
+        for i, val in enumerate(row):
+            content_w = max(1, widths[i] - 2*pad)
+            lines = wrap_text(sanitize_text(val), pdf, content_w)
+            wrapped_cols.append(lines)
+            max_lines = max(max_lines, len(lines))
 
-            x_row = pdf.get_x()
-            y_row = pdf.get_y()
-            for i, lines in enumerate(wrapped_cols):
-                x_cell = x_row + sum(widths[:i])
-                pdf.rect(x_cell, y_row, widths[i], row_h)
-                for j, ln in enumerate(lines):
-                    pdf.set_xy(x_cell + 1, y_row + j * cell_h)
-                    pdf.cell(widths[i]-2, cell_h, ln)
-            pdf.ln(row_h)
+        row_h = max_lines * cell_h + 2*pad
+
+        # Quebra de página com redesenho do header
+        if pdf.get_y() + row_h > pdf.page_break_trigger:
+            pdf.add_page()
+            _draw_header_again()
+
+        # Desenho da linha com padding interno
+        y_row = pdf.get_y()
+        cx = pdf.l_margin
+        for i, lines in enumerate(wrapped_cols):
+            # Moldura da célula
+            pdf.rect(cx, y_row, widths[i], row_h)
+
+            # Texto: alinhamento à esquerda, com padding (sem grudar na borda)
+            x_text = cx + pad
+            y_text = y_row + pad
+            for ln in lines:
+                pdf.set_xy(x_text, y_text)
+                pdf.cell(widths[i] - 2*pad, cell_h, ln)  # corpo à esquerda
+                y_text += cell_h
+
+            cx += widths[i]
+
+        pdf.ln(row_h)
+
 
     # --------------------------
     # Título
