@@ -250,25 +250,19 @@ CSS_GLOBAL = f"""
 # ============================================================
 # 6. UTILITÁRIAS — Unicode + correção forte de espaços
 # ============================================================
-# ============================================================
-# 6. UTILITÁRIAS — Unicode + correção forte de espaços
-# ============================================================
-
 def fix_technical_spacing(txt: str) -> str:
     """
     Insere espaços em padrões colados (ex: 90dias -> 90 dias) 
     e termos técnicos específicos da AMIL.
     """
     if not txt: return ""
-    
-    # 1. Ignora URLs para não quebrar links
-    if "://" in txt: return txt
+    if "://" in txt: return txt # Protege links
 
-    # 2. Separa Número de Letra (Ex: 90dias -> 90 dias | DAS12:00 -> DAS 12:00)
+    # Separa Número de Letra (Ex: 90dias -> 90 dias)
     txt = re.sub(r"(\d)([A-Za-zÀ-ÖØ-öø-ÿ])", r"\1 \2", txt)
     txt = re.sub(r"([A-Za-zÀ-ÖØ-öø-ÿ])(\d)", r"\1 \2", txt)
     
-    # 3. Corrige palavras grudadas específicas identificadas no seu PDF
+    # Dicionário de termos que grudam no manual
     correcoes = {
         r"serpediatria": "ser pediatria",
         r"depacote": "de pacote",
@@ -284,77 +278,27 @@ def fix_technical_spacing(txt: str) -> str:
         r"protocolosaparecerão": "protocolos aparecerão",
         r"Finalizarfaturamento": "Finalizar faturamento",
         r"PELASMARTKIDS": "PELA SMARTKIDS",
-        r"noSisAmil": "no SisAmil",
         r"XMLnovamente": "XML novamente"
     }
-    
     for erro, corrigido in correcoes.items():
         txt = re.sub(erro, corrigido, txt, flags=re.IGNORECASE)
-        
     return txt
 
 def sanitize_text(text: str) -> str:
-    """
-    Normaliza para NFC, limpa invisíveis e aplica correções técnicas de espaço.
-    """
     if text is None: return ""
-    
-    # Normaliza Unicode
+    # 1. Normaliza Unicode e remove invisíveis
     txt = unicodedata.normalize("NFC", str(text))
-    
-    # Converte TODOS os espaços Unicode e invisíveis em espaços normais
     txt = re.sub(r"[\u00A0\u1680\u180E\u2000-\u200A\u202F\u205F\u3000]", " ", txt)
     txt = re.sub(r"[\u200B-\u200F\u202A-\u202E\u2060-\u206F]", "", txt)
     txt = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", txt)
     
-    # APLICA A CORREÇÃO DE ESPAÇAMENTO TÉCNICO (90 dias, etc)
+    # 2. APLICA A CORREÇÃO DE ESPAÇAMENTO (Importante!)
     txt = fix_technical_spacing(txt)
     
-    # Colapsa múltiplos espaços em um só
+    # 3. Limpa espaços duplos
     txt = re.sub(r"[ \t]+", " ", txt)
+    return txt.strip()
     
-    return txt.replace("\r", "").strip()
-
-def fix_common_spacing_heuristics(s: str) -> str:
-    """
-    Força o espaçamento em padrões identificados nos manuais da AMIL.
-    """
-    if not s: return ""
-    
-    # 1. Ignora URLs para não quebrar links
-    if "://" in s: return s 
-
-    # 2. Separa Números de Letras (ex: 90dias -> 90 dias)
-    s = re.sub(r"(\d)([A-Za-zÀ-ÿ])", r"\1 \2", s)
-    s = re.sub(r"([A-Za-zÀ-ÿ])(\d)", r"\1 \2", s)
-
-    # 3. Dicionário de termos específicos que grudam no seu manual
-    correcoes = {
-        r"serpediatria": "ser pediatria",
-        r"depacote": "de pacote",
-        r"maisatualizadas": "mais atualizadas",
-        r"ordemalfabética": "ordem alfabética",
-        r"novapágina": "nova página",
-        r"paraenviar": "para enviar",
-        r"ACESSARSISAMIL": "ACESSAR SISAMIL",
-        r"Finalizarfaturamento": "Finalizar faturamento",
-        r"ofinanceiro": "o financeiro",
-        r"epesquisa": "e pesquisa",
-        r"sófechar": "só fechar",
-        r"deuerro": "deu erro",
-        r"DAS(\d)": r"DAS \1",
-        r"noSisAmil": "no SisAmil",
-        r"protocolosaparecerão": "protocolos aparecerão"
-    }
-    
-    for erro, corrigido in correcoes.items():
-        s = re.sub(erro, corrigido, s, flags=re.IGNORECASE)
-
-    # 4. Remove espaços duplos acidentais
-    s = re.sub(r"\s{2,}", " ", s)
-    
-    return s.strip()
-
 def normalize(value):
     if not value:
         return ""
@@ -510,16 +454,15 @@ def _pdf_set_fonts(pdf: FPDF) -> str:
     return "Helvetica"
 
 
-
 def build_wrapped_lines(text, pdf, usable_w, line_h, bullet_indent=4.0):
     lines_out = []
     if not text: return []
 
-    # O sanitize_text aqui já chamará o fix_technical_spacing automaticamente
     paragraphs = text.split('\n')
     bullet_re = re.compile(r"^\s*(?:[\u2022•\-–—\*]|->|→)\s*(.*)$")
 
     for p in paragraphs:
+        # A higienização aqui garantirá a separação das palavras
         clean = sanitize_text(p)
         if not clean:
             lines_out.append(("", 0.0))
@@ -535,7 +478,6 @@ def build_wrapped_lines(text, pdf, usable_w, line_h, bullet_indent=4.0):
             wrapped = wrap_text(clean, pdf, usable_w)
             for wline in wrapped:
                 lines_out.append((wline, 0.0))
-
     return lines_out
     
 # ============================================================
