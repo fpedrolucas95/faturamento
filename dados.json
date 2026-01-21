@@ -198,5 +198,25 @@
         "doc_digitalizacao": "",
         "observacoes": "*Precisa de pedido médico\nValidade: 60 dias a contar da última sessão \n\n \n\nPARA PESQUISAR O LOTE VAI EM> LOTES DE CREDENCIADOS> DEIXA TUDO EM BRANCO E PESQUISA> SELECIONA A SETINHA PRO LADO E PROCURA O LOTE EM ABERTO. \n\nO envio do XML e entrega é feito no primeiro dia útil de cada mês. Vai com Nota Fiscal, Chagas que leva.\n\nXML: http://170.84.17.131:22101/sistema\n\nAssim que abre o site, não aparece a opção de XML. Mas no canto direito tem a opção Acessar. Aí, vai aparecer “Portal de Faturamento”, aí clica em “Envio de lote” > Browse (parte central da página) > enviar. \n\nSe der erro nos materiais, você faz os testes de trocar a tabela. Caso, depois de tentar de tudo, não passar, usar o código genérico: 99020134 – tabela 00 – Materiais. 99020135 – 00 – medicamentos. \nValida o arquivo e passa, dessa forma o arquivo vai passar, porém, é a primeira vez que mando assim e não sei se vai da problema com glosa.\n \nQuando o arquivo passar ir no menu “faturamento enviados”, vai aparecer todos os arquivos acatados, verifica o valor e clica em imprimir protocolo.\n",
         "id": 10
+    },
+    {
+        "nome": "CBMDF - INTEGRALIS",
+        "codigo": "",
+        "empresa": "Integralis",
+        "sistema_utilizado": "Próprio",
+        "site": "https://singular.cbm.df.gov.br/inova/externo/login?0",
+        "login": "",
+        "senha": "",
+        "prazo_retorno": "",
+        "envio": "Diário",
+        "validade": "",
+        "xml": "Sim",
+        "nf": "Não",
+        "versao_xml": "4.01.00",
+        "fluxo_nf": "Envia XML sem nota",
+        "config_gerador": "",
+        "doc_digitalizacao": "",
+        "observacoes": "Conforme orientação da Sargento Guelli, as assinaturas dos pacientes não precisam ser iguais a documentação. \n\nBombeiro não aceita guia anexa.\n\n•\tATENÇÃO NOS LAUDOS\n•\tDOCUMENTAÇÃO FRENTE E VERSO \n•\tPACIENTE MENOR DE 14 ANOS DOC FRENTE E VERSO + FRENTE E VERSO DO RESPONS. \n\nCaso não apareça o outro campo para anexar a documentação não tem problema desde que a documentação esteja totalmente anexada na confirmação do atendimento.  \n\nValidade das guias: NÃO TEM VALIDADE, vai todos os dias, pelo portal INOVA. Sem NF.\n\nPortal para envio XML: https://singular.cbm.df.gov.br/inova/externo/login?0 coloca login e senha da clínica > Seleciona quem você representa – Clica no nome da clínica > clica em: com solicitante ou pendência > Credenciadas saúde-Pedido de auditoria > Clica em editar – Nova auditoria – escolher o arquivo XML (na hora de gerar o arquivo marcar a opção Guia Operador/Prestador), quando o XML for selecionado vai aparecer o campo para anexar a guia escaneada, anexe todas e no final clique em confirmar.\n\nPara imprimir o comprovante de envio vai em acompanhamento > Credenciadas saúde-Pedido de auditoria > clica no símbolo  (visualizar processo) clica em cima do número do seu processo e imprime 2 vias, uma vai pro financeiro junto com o aceite e a outra deixa junto com as guias que serão arquivadas.\n\n\n",
+        "id": 11
     }
 ]
