@@ -1037,11 +1037,9 @@ def page_cadastro():
     dados_atuais = list(dados_atuais)
 
     ui_card_start("📝 Cadastro de Convênio")
-
     opcoes = ["+ Novo Convênio"] + [
         f"{c.get('id')} — {safe_get(c, 'nome')}" for c in dados_atuais
     ]
-
     escolha = st.selectbox("Selecione um convênio para editar:", opcoes)
 
     if escolha == "+ Novo Convênio":
@@ -1053,91 +1051,96 @@ def page_cadastro():
             (c for c in dados_atuais if str(c.get('id')) == str(conv_id)),
             None
         )
-
     ui_card_end()
 
-    # ============================================================
-    # FORM — APENAS CAMPOS TRADICIONAIS + SUBMIT
-    # ============================================================
-    form_key = f"form_{conv_id}" if conv_id else "form_novo"
-
-    with st.form(key=form_key):
-
+    # --- CAMPOS DO FORMULÁRIO (Usando container em vez de form para melhor compatibilidade com Quill) ---
+    with st.container():
         col1, col2, col3 = st.columns(3)
-
-        # -------- COLUNA 1 --------
         with col1:
             nome = st.text_input("Nome do Convênio", value=safe_get(dados_conv, "nome"))
             codigo = st.text_input("Código", value=safe_get(dados_conv, "codigo"))
-
+            
             valor_empresa = safe_get(dados_conv, "empresa")
-            if valor_empresa not in EMPRESAS_FATURAMENTO:
-                valor_empresa = EMPRESAS_FATURAMENTO[0]
-            empresa = st.selectbox(
-                "Empresa Faturamento",
-                EMPRESAS_FATURAMENTO,
-                index=EMPRESAS_FATURAMENTO.index(valor_empresa)
-            )
+            idx_emp = EMPRESAS_FATURAMENTO.index(valor_empresa) if valor_empresa in EMPRESAS_FATURAMENTO else 0
+            empresa = st.selectbox("Empresa Faturamento", EMPRESAS_FATURAMENTO, index=idx_emp)
 
             valor_sistema = safe_get(dados_conv, "sistema_utilizado")
-            if valor_sistema not in SISTEMAS:
-                valor_sistema = SISTEMAS[0]
-            sistema = st.selectbox(
-                "Sistema",
-                SISTEMAS,
-                index=SISTEMAS.index(valor_sistema)
-            )
+            idx_sis = SISTEMAS.index(valor_sistema) if valor_sistema in SISTEMAS else 0
+            sistema = st.selectbox("Sistema", SISTEMAS, index=idx_sis)
 
-        # -------- COLUNA 2 --------
         with col2:
             site = st.text_input("Site/Portal", value=safe_get(dados_conv, "site"))
             login = st.text_input("Login", value=safe_get(dados_conv, "login"))
             senha = st.text_input("Senha", value=safe_get(dados_conv, "senha"))
             retorno = st.text_input("Prazo Retorno", value=safe_get(dados_conv, "prazo_retorno"))
 
-        # -------- COLUNA 3 --------
         with col3:
             envio = st.text_input("Prazo Envio", value=safe_get(dados_conv, "envio"))
             validade = st.text_input("Validade da Guia", value=safe_get(dados_conv, "validade"))
-
+            
             valor_xml = safe_get(dados_conv, "xml")
-            if valor_xml not in OPCOES_XML:
-                valor_xml = "Sim"
-            xml = st.radio("Envia XML?", OPCOES_XML, index=OPCOES_XML.index(valor_xml))
+            idx_xml = OPCOES_XML.index(valor_xml) if valor_xml in OPCOES_XML else 0
+            xml = st.radio("Envia XML?", OPCOES_XML, index=idx_xml)
 
             valor_nf = safe_get(dados_conv, "nf")
-            if valor_nf not in OPCOES_NF:
-                valor_nf = "Sim"
-            nf = st.radio("Exige Nota Fiscal?", OPCOES_NF, index=OPCOES_NF.index(valor_nf))
+            idx_nf = OPCOES_NF.index(valor_nf) if valor_nf in OPCOES_NF else 0
+            nf = st.radio("Exige Nota Fiscal?", OPCOES_NF, index=idx_nf)
 
-        # -------- XML / NF --------
         colA, colB = st.columns(2)
-
         with colA:
             valor_versao = safe_get(dados_conv, "versao_xml")
-            if valor_versao not in VERSOES_TISS:
-                valor_versao = VERSOES_TISS[0]
-            versao_xml = st.selectbox(
-                "Versão XML (TISS)",
-                VERSOES_TISS,
-                index=VERSOES_TISS.index(valor_versao)
-            )
-
+            idx_ver = VERSOES_TISS.index(valor_versao) if valor_versao in VERSOES_TISS else 0
+            versao_xml = st.selectbox("Versão XML (TISS)", VERSOES_TISS, index=idx_ver)
         with colB:
             valor_fluxo = safe_get(dados_conv, "fluxo_nf")
-            if valor_fluxo not in OPCOES_FLUXO_NF:
-                valor_fluxo = OPCOES_FLUXO_NF[0]
-            fluxo_nf = st.selectbox(
-                "Fluxo da Nota",
-                OPCOES_FLUXO_NF,
-                index=OPCOES_FLUXO_NF.index(valor_fluxo)
-            )
+            idx_fluxo = OPCOES_FLUXO_NF.index(valor_fluxo) if valor_fluxo in OPCOES_FLUXO_NF else 0
+            fluxo_nf = st.selectbox("Fluxo da Nota", OPCOES_FLUXO_NF, index=idx_fluxo)
 
         config_gerador = st.text_area("Configuração do Gerador XML", value=safe_get(dados_conv, "config_gerador"))
         doc_digitalizacao = st.text_area("Digitalização e Documentação", value=safe_get(dados_conv, "doc_digitalizacao"))
 
-        # SUBMIT DO FORM
-        submit = st.form_submit_button("💾 Salvar Dados")
+    # --- SEÇÃO DO EDITOR DE TEXTO RICO ---
+    st.markdown("### 📝 Observações Críticas")
+    initial_html = safe_get(dados_conv, "observacoes_html")
+    if not initial_html:
+        legacy_txt = safe_get(dados_conv, "observacoes")
+        initial_html = "".join([f"<p>{p}</p>" for p in legacy_txt.split("\n") if p])
+
+    if st_quill is None:
+        observacoes_html = st.text_area("Observações (HTML)", value=initial_html, height=300, key=f"txt_{conv_id}")
+    else:
+        observacoes_html = st_quill(
+            value=initial_html,
+            html=True,
+            key=f"quill_{conv_id or 'novo'}",
+            height=300
+        )
+
+    # --- BOTÃO DE SALVAR FINAL ---
+    if st.button("💾 Salvar Alterações"):
+        # Lógica de processamento de dados (mesma que você já tinha)
+        novo_registro = {
+            "id": int(conv_id) if conv_id else generate_id(dados_atuais),
+            "nome": nome, "codigo": codigo, "empresa": empresa,
+            "sistema_utilizado": sistema, "site": site, "login": login,
+            "senha": senha, "prazo_retorno": retorno, "envio": envio,
+            "validade": validade, "xml": xml, "nf": nf,
+            "versao_xml": versao_xml, "fluxo_nf": fluxo_nf,
+            "config_gerador": config_gerador, "doc_digitalizacao": doc_digitalizacao,
+            "observacoes_html": observacoes_html,
+            "observacoes": BeautifulSoup(observacoes_html, "html.parser").get_text("\n") if BeautifulSoup else ""
+        }
+        
+        # Atualiza a lista
+        if conv_id is None:
+            dados_atuais.append(novo_registro)
+        else:
+            dados_atuais = [novo_registro if str(c.get("id")) == str(conv_id) else c for c in dados_atuais]
+        
+        if db.save(dados_atuais):
+            st.success("✔ Salvo com sucesso!")
+            time.sleep(1)
+            st.rerun()
 
     # ============================================================
     # RICH-TEXT (FORA DO FORM!)  — Aceita prints via Ctrl+V
