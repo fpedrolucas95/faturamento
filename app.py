@@ -316,7 +316,7 @@ def fix_technical_spacing(txt: str) -> str:
 
     
 
-ef sanitize_text(text: str) -> str:
+def sanitize_text(text: str) -> str:
     if not text:
         return ""
 
