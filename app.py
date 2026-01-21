@@ -266,53 +266,33 @@ def fix_technical_spacing(txt: str) -> str:
         urls[key] = match.group(0)
         return key
 
-    # 6️⃣ Palavra minúscula colada com palavra minúscula (casos técnicos comuns)
-    txt = re.sub(
-        r"\b(dias)(úteis|útil)\b", 
-        r"\1 \2", 
-        txt, 
-        flags=re.IGNORECASE
-    )
-
-    txt = re.sub(
-        r"\b(sem)(nota|nf)\b", 
-        r"\1 \2", 
-        txt, 
-        flags=re.IGNORECASE
-    )
-
-    txt = re.sub(
-        r"\b(data)(de)(envio)\b", 
-        r"\1 \2 \3", 
-        txt, 
-        flags=re.IGNORECASE
-    )
-
-    # 1️⃣ Protege URLs
+    # 1️⃣ PROTEGE URLs PRIMEIRO
     txt = re.sub(r"https?://\S+", _url_replacer, txt)
 
-    # 2️⃣ Garante espaço após bullet / traço
+    # 2️⃣ BULLETS
     txt = re.sub(r"([•\-–—])([^\s])", r"\1 \2", txt)
 
     # 3️⃣ Número ↔ letra
     txt = re.sub(r"(\d)([^\W\d_])", r"\1 \2", txt, flags=re.UNICODE)
     txt = re.sub(r"([^\W\d_])(\d)", r"\1 \2", txt, flags=re.UNICODE)
 
-    # 4️⃣ Minúscula → Maiúscula
+    # 4️⃣ minúscula → Maiúscula
     txt = re.sub(r"([a-záéíóúãõç])([A-ZÁÉÍÓÚÃÕÇ])", r"\1 \2", txt)
 
-    # 5️⃣ Sigla → palavra
+    # 5️⃣ sigla → palavra
     txt = re.sub(r"([A-Z]{2,})([a-záéíóúãõç])", r"\1 \2", txt)
 
-    # 6.6️⃣ Tempo colado (às12:00)
-    txt = re.sub(r"(às)(\d)", r"\1 \2", txt, flags=re.IGNORECASE)
-
-    # 6️⃣ Palavra → sigla
+    # 6️⃣ palavra → sigla
     txt = re.sub(r"([a-záéíóúãõç])([A-Z]{2,})", r"\1 \2", txt)
 
-    # 7️⃣ Restaura URLs
-    for key, url in urls.items():
-        txt = txt.replace(key, url)
+    # 7️⃣ casos técnicos
+    txt = re.sub(r"\b(dias)(úteis|útil)\b", r"\1 \2", txt, flags=re.IGNORECASE)
+    txt = re.sub(r"\b(sem)(nota|nf)\b", r"\1 \2", txt, flags=re.IGNORECASE)
+    txt = re.sub(r"(às)(\d)", r"\1 \2", txt, flags=re.IGNORECASE)
+
+    # 8️⃣ RESTAURA URLs
+    for k, v in urls.items():
+        txt = txt.replace(k, v)
 
     return txt
     
@@ -567,6 +547,7 @@ def gerar_pdf(dados):
 
             # mede linhas do valor
             set_font(val_size, False)
+            value = sanitize_text(value)
             lines = wrap_text(value, pdf, max(1, usable_w))
             needed_h = max(1, len(lines)) * line_h
 
@@ -675,6 +656,7 @@ def gerar_pdf(dados):
             max_lines = 1
             for i, val in enumerate(row):
                 content_w = max(1, widths[i] - 2*pad)
+                val = sanitize_text(val or "")
                 lines = wrap_text(val or "", pdf, content_w)
                 wrapped_cols.append(lines)
                 max_lines = max(max_lines, len(lines))
@@ -811,7 +793,7 @@ def ui_section_title(text: str):
             border-radius:10px;
             font-size:26px;
             font-weight:700;">
-            {sanitize_text(text).upper()}
+            {ui_text(text).upper()}
         </div>
         """,
         unsafe_allow_html=True
@@ -821,8 +803,8 @@ def ui_info_line(label: str, value: str):
     st.markdown(
         f"""
         <div style="margin:6px 0; font-size:15px; line-height:1.5;">
-            <strong>{sanitize_text(label)}:</strong>
-            <span style="color:{TEXT_DARK};"> {sanitize_text(value)} </span>
+            <strong>{ui_text(label)}:</strong>
+            <span>{ui_text(value)}</span>
         </div>
         """,
         unsafe_allow_html=True
