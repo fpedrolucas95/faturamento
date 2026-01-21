@@ -260,12 +260,36 @@ class RotinasModule:
 
         # ---- Botão PDF (aparece quando uma rotina está selecionada) ----
         if dados_rotina:
-            st.download_button(
-                "📥 Baixar PDF da Rotina",
-                self.gerar_pdf_rotina(dados_rotina),
-                file_name=f"Rotina_{self.safe_get(dados_rotina,'setor')}_{self.safe_get(dados_rotina,'nome')}.pdf",
-                mime="application/pdf"
-            )
+            import re
+        
+            try:
+                pdf_bytes = self.gerar_pdf_rotina(dados_rotina)
+        
+                # Garante que o dado para o st.download_button é bytes
+                if isinstance(pdf_bytes, str):
+                    pdf_bytes = pdf_bytes.encode("latin-1", "ignore")
+                if not isinstance(pdf_bytes, (bytes, bytearray)):
+                    raise TypeError(f"Tipo inesperado ao gerar PDF: {type(pdf_bytes)}")
+        
+                # Monta nome de arquivo seguro (sem caracteres inválidos)
+                setor = self.safe_get(dados_rotina, "setor")
+                nome  = self.safe_get(dados_rotina, "nome")
+                fname = f"Rotina_{setor}_{nome}.pdf".strip() or "Rotina.pdf"
+                fname = re.sub(r'[\\/:*?"<>|]+', "_", fname)[:120]
+        
+                st.download_button(
+                    label="📥 Baixar PDF da Rotina",
+                    data=pdf_bytes,
+                    file_name=fname,
+                    mime="application/pdf",
+                    key=f"dl_pdf_rotina_{self.safe_get(dados_rotina, 'id')}",
+                )
+        
+            except Exception as e:
+                st.error("Falha ao preparar o PDF para download.")
+                # Mostra detalhes no app (útil em desenvolvimento; remova se quiser)
+                st.exception(e)
+
 
         # ---- Visualização do banco ----
         st.markdown("<div class='card'><div class='card-title'>📋 Banco de Rotinas</div>", unsafe_allow_html=True)
