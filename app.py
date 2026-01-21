@@ -272,6 +272,46 @@ def sanitize_text(text: str) -> str:
 
     return txt.replace("\r", "").strip()
 
+def fix_common_spacing_heuristics(s: str) -> str:
+    """
+    Corrige palavras e números grudados identificados nos manuais.
+    """
+    if not s: return ""
+    
+    # 1. Protege URLs para não inserir espaços no meio delas
+    if "://" in s:
+        return s 
+
+    # 2. Insere espaço entre Números e Letras (Ex: 90dias -> 90 dias)
+    s = re.sub(r"(\d)([A-Za-zÀ-ÿ])", r"\1 \2", s)
+    s = re.sub(r"([A-Za-zÀ-ÿ])(\d)", r"\1 \2", s)
+
+    # 3. Corrige termos técnicos específicos da AMIL que grudam
+    fixes = {
+        r"serpediatria": "ser pediatria",
+        r"depacote": "de pacote",
+        r"maisatualizadas": "mais atualizadas",
+        r"ordemalfabética": "ordem alfabética",
+        r"novapágina": "nova página",
+        r"paraenviar": "para enviar",
+        r"ACESSARSISAMIL": "ACESSAR SISAMIL",
+        r"Finalizarfaturamento": "Finalizar faturamento",
+        r"ofinanceiro": "o financeiro",
+        r"DAS(\d)": r"DAS \1", 
+        r"PELASMARTKIDS": "PELA SMARTKIDS",
+        r"epesquisa": "e pesquisa",
+        r"sófechar": "só fechar",
+        r"deuerro": "deu erro"
+    }
+    
+    for pat, rep in fixes.items():
+        s = re.sub(pat, rep, s, flags=re.IGNORECASE)
+
+    # 4. Limpa espaços duplos
+    s = re.sub(r"\s{2,}", " ", s)
+    
+    return s.strip()
+
 def normalize(value):
     if not value:
         return ""
@@ -429,51 +469,30 @@ def _pdf_set_fonts(pdf: FPDF) -> str:
 
 
 def build_wrapped_lines(text, pdf, usable_w, line_h, bullet_indent=4.0):
-    """
-    Melhoria na formatação:
-    1. Preserva parágrafos (quebras de linha duplas).
-    2. Adiciona espaço após pontuação se estiver grudado.
-    3. Trata marcadores (bullets) com indentação correta.
-    """
     lines_out = []
     if not text:
         return []
 
-    # Normalização inicial: remove espaços Unicode problemáticos
     text = sanitize_text(text)
-    
-    # Divide por parágrafos reais
     paragraphs = text.split('\n')
-
     bullet_re = re.compile(r"^\s*(?:[\u2022•\-–—\*]|->|→)\s*(.*)$")
-
-    def fix_spacing(s: str) -> str:
-        # Garante espaço após ':' e ',' (exceto em URLs/Horários)
-        s = re.sub(r"([,;])(?!\s)", r"\1 ", s)
-        # Corrige palavras grudadas em números (ex: 90dias -> 90 dias)
-        s = re.sub(r"(\d)([A-Za-zÀ-ÿ])", r"\1 \2", s)
-        s = re.sub(r"([A-Za-zÀ-ÿ])(\d)", r"\1 \2", s)
-        # Remove espaços duplos
-        s = re.sub(r"\s{2,}", " ", s)
-        return s.strip()
 
     for p in paragraphs:
         if not p.strip():
-            lines_out.append(("", 0.0)) # Linha vazia para separar parágrafos
+            lines_out.append(("", 0.0))
             continue
         
-        # Verifica se é bullet point
-        m = bullet_re.match(p)
+        # AQUI CHAMAMOS A FUNÇÃO DE CORREÇÃO DE ESPAÇOS
+        p_corrigido = fix_common_spacing_heuristics(p)
+        
+        m = bullet_re.match(p_corrigido)
         if m:
-            content = fix_spacing(m.group(1))
+            content = m.group(1).strip()
             wrapped = wrap_text("• " + content, pdf, usable_w - bullet_indent)
-            for i, wline in enumerate(wrapped):
-                # A primeira linha do bullet tem o marcador, as outras apenas a indentação
+            for wline in wrapped:
                 lines_out.append((wline, bullet_indent))
         else:
-            # Linha normal de parágrafo
-            content = fix_spacing(p)
-            wrapped = wrap_text(content, pdf, usable_w)
+            wrapped = wrap_text(p_corrigido, pdf, usable_w)
             for wline in wrapped:
                 lines_out.append((wline, 0.0))
 
