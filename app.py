@@ -262,12 +262,12 @@ def fix_technical_spacing(txt: str) -> str:
     urls = {}
 
     def _url_replacer(match):
-        key = f"__URL{len(urls)}__"
+        key = f"\u0000URL{len(urls)}\u0000"
         urls[key] = match.group(0)
         return key
 
     # 1️⃣ PROTEGE URLs PRIMEIRO
-    txt = re.sub(r"https?://\S+", _url_replacer, txt)
+    txt = re.sub(r"https?://[^\s<>\"']+", _url_replacer, txt)
     
     # 7️⃣ casos técnicos
     txt = re.sub(r"\b(dias)(úteis|útil)\b", r"\1 \2", txt, flags=re.IGNORECASE)
