@@ -223,20 +223,14 @@ class RotinasModule:
         st.markdown("##### 🖋️ Descrição Detalhada da Rotina")
 
         
+        
         descricao_html = st_quill(
             value=self.safe_get(dados_rotina, "descricao"),
+            key=f"quill_rotina_{rotina_id}",
             placeholder="Digite o passo a passo completo da rotina...",
             theme="snow",
-            key=f"quill_rotina_{rotina_id}",
-            modules={
-                "toolbar": [
-                    ["bold", "italic", "underline"],
-                    [{"list": "ordered"}, {"list": "bullet"}],
-                    ["link"],
-                    ["clean"],
-                ]
-            },
         )
+
 
 
         # ============================================================
