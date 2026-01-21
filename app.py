@@ -24,6 +24,8 @@ from fpdf import FPDF
 import streamlit as st
 from rotinas_module import RotinasModule
 
+from streamlit_quill import st_quill
+from streamlit_paste_button import paste_image_button
 
 # ------------------------------------------------------------
 # 2. GITHUB DATABASE (Incluído no módulo — sem import externo)
@@ -302,7 +304,17 @@ def ui_text(value):
         return ""
     return sanitize_text(value)   
 
+def image_to_base64(img):
+    if img is None: return None
+    buffered = io.BytesIO()
+    img.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode()
 
+def clean_html(raw_html):
+    """Limpa tags HTML para o PDF não bugar"""
+    if not raw_html: return ""
+    cleanr = re.compile('<.*?>')
+    return re.sub(cleanr, '', raw_html)
 
 
 def fix_technical_spacing(txt: str) -> str:
@@ -517,6 +529,10 @@ def gerar_pdf(dados):
     Seção 2 (tabela 5 colunas idêntica ao print),
     e 'Observações Críticas' multipágina.
     """
+    obs_text_raw = safe_get(dados, "observacoes")
+    obs_text = clean_html(obs_text_raw) # ✅ Remove as tags HTML antes de processar as linhas do PDF
+    wrapped_lines = build_wrapped_lines(obs_text, pdf, usable_w, line_h, bullet_indent=bullet_indent)
+    
     pdf = FPDF(orientation="P", unit="mm", format="A4")
     pdf.set_margins(15, 12, 15)
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -858,14 +874,39 @@ def ui_block_info(title: str, content: str):
     )
     ui_card_end()
 
-# ============================================================
-# 11. PÁGINA — CADASTRO / EDIÇÃO DE CONVÊNIOS
-# ============================================================
+# ------------------------------------------------------------
+# FUNÇÕES DE APOIO (Coloque antes da def page_cadastro)
+# ------------------------------------------------------------
+def image_to_base64(img):
+    """Converte objeto PIL Image para string Base64 para salvar no JSON"""
+    if img is None:
+        return ""
+    import io
+    buffered = io.BytesIO()
+    # Otimização: Redimensiona se for muito grande para não travar o JSON no GitHub
+    if img.width > 1200:
+        img.thumbnail((1200, 1200))
+    img.save(buffered, format="PNG", optimize=True)
+    return base64.b64encode(buffered.getvalue()).decode()
+
+def clean_html(raw_html):
+    """Remove tags HTML para processamento de texto puro (usado no PDF)"""
+    if not raw_html: return ""
+    cleanr = re.compile('<.*?>|&nbsp;')
+    cleantext = re.sub(cleanr, ' ', raw_html)
+    return re.sub(r' +', ' ', cleantext).strip()
+
+# ------------------------------------------------------------
+# MÓDULO DE CADASTRO COMPLETO
+# ------------------------------------------------------------
 def page_cadastro():
+    from streamlit_quill import st_quill
+    from streamlit_paste_button import paste_image_button
+
     dados_atuais, _ = db.load(force=True)
     dados_atuais = list(dados_atuais)
 
-    ui_card_start("📝 Cadastro de Convênio")
+    ui_card_start("📝 Gestão de Convênios")
 
     opcoes = ["+ Novo Convênio"] + [
         f"{c.get('id')} — {safe_get(c, 'nome')}" for c in dados_atuais
@@ -885,129 +926,109 @@ def page_cadastro():
 
     ui_card_end()
 
-    form_key = f"form_{conv_id}" if conv_id else "form_novo"
+    # Chave única para evitar conflitos de estado no Streamlit
+    form_key = f"form_premium_{conv_id}" if conv_id else "form_premium_novo"
 
     with st.form(key=form_key):
         col1, col2, col3 = st.columns(3)
 
-        # COLUNA 1
         with col1:
             nome = st.text_input("Nome do Convênio", value=safe_get(dados_conv, "nome"))
             codigo = st.text_input("Código", value=safe_get(dados_conv, "codigo"))
-
+            
             valor_empresa = safe_get(dados_conv, "empresa")
-            if valor_empresa not in EMPRESAS_FATURAMENTO:
-                valor_empresa = EMPRESAS_FATURAMENTO[0]
-            empresa = st.selectbox(
-                "Empresa Faturamento",
-                EMPRESAS_FATURAMENTO,
-                index=EMPRESAS_FATURAMENTO.index(valor_empresa)
-            )
+            empresa = st.selectbox("Empresa", EMPRESAS_FATURAMENTO, 
+                                 index=EMPRESAS_FATURAMENTO.index(valor_empresa) if valor_empresa in EMPRESAS_FATURAMENTO else 0)
 
-            valor_sistema = safe_get(dados_conv, "sistema_utilizado")
-            if valor_sistema not in SISTEMAS:
-                valor_sistema = SISTEMAS[0]
-            sistema = st.selectbox(
-                "Sistema",
-                SISTEMAS,
-                index=SISTEMAS.index(valor_sistema)
-            )
-
-        # COLUNA 2
         with col2:
             site = st.text_input("Site/Portal", value=safe_get(dados_conv, "site"))
             login = st.text_input("Login", value=safe_get(dados_conv, "login"))
             senha = st.text_input("Senha", value=safe_get(dados_conv, "senha"))
-            retorno = st.text_input("Prazo Retorno", value=safe_get(dados_conv, "prazo_retorno"))
 
-        # COLUNA 3
         with col3:
             envio = st.text_input("Prazo Envio", value=safe_get(dados_conv, "envio"))
-            validade = st.text_input("Validade da Guia", value=safe_get(dados_conv, "validade"))
+            validade = st.text_input("Validade", value=safe_get(dados_conv, "validade"))
+            versao_xml = st.selectbox("Versão TISS", VERSOES_TISS,
+                                    index=VERSOES_TISS.index(safe_get(dados_conv, "versao_xml")) if safe_get(dados_conv, "versao_xml") in VERSOES_TISS else 0)
 
-            valor_xml = safe_get(dados_conv, "xml")
-            if valor_xml not in OPCOES_XML:
-                valor_xml = "Sim"
-            xml = st.radio("Envia XML?", OPCOES_XML, index=OPCOES_XML.index(valor_xml))
+        st.markdown("---")
+        
+        # --- EDITOR DE TEXTO RICO (QUILL) ---
+        st.markdown("### 🖋️ Observações Críticas e Regras")
+        observacoes_html = st_quill(
+            value=safe_get(dados_conv, "observacoes"),
+            placeholder="Digite as regras detalhadas, use negrito, listas e cores...",
+            key=f"quill_{conv_id}"
+        )
 
-            valor_nf = safe_get(dados_conv, "nf")
-            if valor_nf not in OPCOES_NF:
-                valor_nf = "Sim"
-            nf = st.radio("Exige Nota Fiscal?", OPCOES_NF, index=OPCOES_NF.index(valor_nf))
+        st.markdown("---")
 
-        # XML/NF
-        colA, colB = st.columns(2)
-        with colA:
-            valor_versao = safe_get(dados_conv, "versao_xml")
-            if valor_versao not in VERSOES_TISS:
-                valor_versao = VERSOES_TISS[0]
-            versao_xml = st.selectbox(
-                "Versão XML (TISS)",
-                VERSOES_TISS,
-                index=VERSOES_TISS.index(valor_versao)
+        # --- CAPTURA DE PRINT (CLIPBOARD) ---
+        st.markdown("### 📸 Print de Tela / Evidência")
+        c_paste, c_preview = st.columns([1, 1])
+        
+        with c_paste:
+            st.info("Clique no botão abaixo e aperte **Ctrl+V** para colar um print.")
+            pasted_img = paste_image_button(
+                label="📋 Colar Imagem do Clipboard",
+                key=f"paste_btn_{conv_id}"
             )
+        
+        # Lógica para manter a imagem atual ou atualizar com a colada
+        img_b64_salva = safe_get(dados_conv, "print_b64")
+        
+        if pasted_img.image_data is not None:
+            # Se colou algo novo, mostra o preview e prepara para salvar
+            with c_preview:
+                st.image(pasted_img.image_data, caption="Imagem Colada (Nova)", use_container_width=True)
+            img_para_salvar = image_to_base64(pasted_img.image_data)
+        elif img_b64_salva:
+            # Se não colou nada novo, mas já tinha imagem no banco
+            with c_preview:
+                st.image(base64.b64decode(img_b64_salva), caption="Imagem atual no banco", use_container_width=True)
+            img_para_salvar = img_b64_salva
+        else:
+            img_para_salvar = ""
 
-        with colB:
-            valor_fluxo = safe_get(dados_conv, "fluxo_nf")
-            if valor_fluxo not in OPCOES_FLUXO_NF:
-                valor_fluxo = OPCOES_FLUXO_NF[0]
-            fluxo_nf = st.selectbox(
-                "Fluxo da Nota",
-                OPCOES_FLUXO_NF,
-                index=OPCOES_FLUXO_NF.index(valor_fluxo)
-            )
-
-        config_gerador = st.text_area("Configuração do Gerador XML", value=safe_get(dados_conv, "config_gerador"))
-        doc_digitalizacao = st.text_area("Digitalização e Documentação", value=safe_get(dados_conv, "doc_digitalizacao"))
-        observacoes = st.text_area("Observações Críticas", value=safe_get(dados_conv, "observacoes"))
-
-        submit = st.form_submit_button("💾 Salvar Dados")
+        st.markdown("<br>", unsafe_allow_html=True)
+        submit = st.form_submit_button("💾 SALVAR ALTERAÇÕES COMPLETAS", use_container_width=True)
 
         if submit:
-            novo_registro = {
-                "nome": nome,
-                "codigo": codigo,
-                "empresa": empresa,
-                "sistema_utilizado": sistema,
-                "site": site,
-                "login": login,
-                "senha": senha,
-                "prazo_retorno": retorno,
-                "envio": envio,
-                "validade": validade,
-                "xml": xml,
-                "nf": nf,
-                "versao_xml": versao_xml,
-                "fluxo_nf": fluxo_nf,
-                "config_gerador": config_gerador,
-                "doc_digitalizacao": doc_digitalizacao,
-                "observacoes": observacoes,
-            }
-
-            if conv_id is None:
-                novo_registro["id"] = generate_id(dados_atuais)
-                dados_atuais.append(novo_registro)
+            if not nome:
+                st.error("O nome do convênio é obrigatório.")
             else:
-                novo_registro["id"] = int(conv_id)
-                for i, c in enumerate(dados_atuais):
-                    if str(c.get("id")) == str(conv_id):
-                        dados_atuais[i] = novo_registro
-                        break
+                novo_reg = {
+                    "id": int(conv_id) if conv_id else generate_id(dados_atuais),
+                    "nome": nome,
+                    "codigo": codigo,
+                    "empresa": empresa,
+                    "site": site,
+                    "login": login,
+                    "senha": senha,
+                    "envio": envio,
+                    "validade": validade,
+                    "versao_xml": versao_xml,
+                    "observacoes": observacoes_html,  # Salva o HTML do Editor
+                    "print_b64": img_para_salvar,     # Salva a imagem em Base64
+                    # Mantemos os campos que não estão no formulário simplificado para não perdê-los
+                    "sistema_utilizado": safe_get(dados_conv, "sistema_utilizado"),
+                    "xml": safe_get(dados_conv, "xml", "Sim"),
+                    "nf": safe_get(dados_conv, "nf", "Sim"),
+                    "fluxo_nf": safe_get(dados_conv, "fluxo_nf")
+                }
 
-            # SALVAR NO GITHUB
-            if db.save(dados_atuais):
-                st.success(f"✔ Convênio {novo_registro['id']} salvo com sucesso!")
+                if conv_id is None:
+                    dados_atuais.append(novo_reg)
+                else:
+                    for i, c in enumerate(dados_atuais):
+                        if str(c.get("id")) == str(conv_id):
+                            dados_atuais[i] = novo_reg
+                            break
 
-                # LIMPA CACHE DO BANCO
-                db._cache_data = None
-                db._cache_sha = None
-                db._cache_time = 0.0
-
-                # LIMPA ESTADO DO STREAMLIT
-                st.session_state.clear()
-
-                time.sleep(1)
-                st.rerun()
+                if db.save(dados_atuais):
+                    st.success("✔ Dados e imagens salvos com sucesso no GitHub!")
+                    time.sleep(1)
+                    st.rerun()
 
 
 
