@@ -1151,29 +1151,23 @@ def page_cadastro():
             parts = [f"<p>{sanitize_text(p)}</p>" for p in legacy_txt.split("\n") if sanitize_text(p)]
             initial_html = "\n".join(parts)
 
-    # Editor Quill fora do form
+    # CORREÇÃO DA INDENTAÇÃO AQUI:
     if st_quill is None:
-    # Fallback para área de texto comum
-    observacoes_html = st.text_area(
-        "Observações Críticas (HTML)",
-        value=initial_html,
-        height=300,
-        key=f"area_txt_{conv_id or 'novo'}"
-    )
+        st.info("Editor avançado não instalado... usando modo texto simples.")
+        observacoes_html = st.text_area(
+            "Observações Críticas (HTML)",
+            value=initial_html or "",
+            height=300,
+            key=f"area_txt_{conv_id or 'novo'}"
+        )
     else:
-        # Adicionando um tratamento de erro específico para o componente
-        try:
-            observacoes_html = st_quill(
-                value=initial_html, # Garantido como string acima
-                placeholder="Digite suas observações… (pode colar prints com Ctrl+V)",
-                html=True,
-                key=f"quill_editor_{conv_id or 'novo'}", # Chave dinâmica é essencial
-                height=280,
-            )
-        except Exception as e:
-            st.error("Erro ao carregar o editor visual. Usando modo de segurança.")
-            observacoes_html = st.text_area("Observações (Segurança)", value=initial_html)
-
+        observacoes_html = st_quill(
+            value=initial_html or "",
+            placeholder="Digite suas observações… (pode colar prints com Ctrl+V)",
+            html=True,
+            key=f"obs_quill_{conv_id or 'novo'}",
+            height=280,
+        )
     # ============================================================
     # PROCESSAMENTO DO SUBMIT
     # ============================================================
