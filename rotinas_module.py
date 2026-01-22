@@ -154,8 +154,8 @@ class RotinasModule:
             pdf.set_y(y_top + box_h)
             i = end
 
-        # fpdf2 retorna bytes diretamente
-        return pdf.output()
+        # fpdf2 retorna bytearray, converter para bytes
+        return bytes(pdf.output())
 
     # ============================================================
     # PÁGINA DO MÓDULO (COM EDITOR QUILL)

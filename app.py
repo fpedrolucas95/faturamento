@@ -688,8 +688,8 @@ def gerar_pdf(dados):
         pdf.set_y(y_curr + box_h)
         idx = fim
 
-    # fpdf2 retorna bytes diretamente
-    return pdf.output()
+    # fpdf2 retorna bytearray, converter para bytes
+    return bytes(pdf.output())
 
 
 # ============================================================
